@@ -1,14 +1,28 @@
-const express = require("express");
-app = express();
-
 require("dotenv").config();
 
-const PORT = process.env.PORT || 1000
+const app = require("./app");
+const pool = require("./config/database");
 
-app.get("/", (req, res) => {
-  res.json({ status: "success", code: "200" });
+const PORT = process.env.PORT || 1000;
+
+// Start Server
+app.listen(PORT, () => {
+  console.log(`
+╔══════════════════════════════════╗
+║   🚀 Resello Backend Server      ║
+║   📍 Port: ${PORT}                  ║
+║   🌍 Environment: ${PORT || "development"}           ║
+╚══════════════════════════════════╝
+  `);
 });
 
-app.listen(PORT, () =>
-  console.log(`Server Running on PORT : ${PORT}`),
-);
+// Graceful Shutdown
+process.on("SIGTERM", () => {
+  console.log("SIGTERM received, closing server...");
+  server.close(() => {
+    pool.end(() => {
+      console.log("Database pool closed");
+      process.exit(0);
+    });
+  });
+});
