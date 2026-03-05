@@ -6,7 +6,7 @@ const pool = require("./config/database");
 const PORT = process.env.PORT || 1000;
 
 // Start Server
-app.listen(PORT, () => {
+app.listen(PORT,"0.0.0.0", () => {
   console.log(`
 ╔══════════════════════════════════╗
 ║   🚀 Resello Backend Server      ║

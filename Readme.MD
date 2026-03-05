@@ -59,7 +59,7 @@ npm install
 ```bash
 # Create PostgreSQL database
 psql -U postgres
-CREATE DATABASE cashify_db;
+CREATE DATABASE Resello;
 \q
 ```
 
@@ -89,6 +89,7 @@ npm start
 ```
 POST   /api/auth/register       - Register new user
 POST   /api/auth/login          - User login
+POST   /api/auth/logout          - User logOut
 GET    /api/auth/profile        - Get user profile (auth)
 PUT    /api/auth/profile        - Update profile (auth)
 ```
@@ -216,11 +217,12 @@ JWT_EXPIRE=7d
 
 - `200` - Success
 - `201` - Created
-- `400` - Bad Request
-- `401` - Unauthorized
-- `403` - Forbidden
+- `400` - Bad Request      -- unsufficient params
+- `401` - Unauthorized     -- login failed
+- `403` - Forbidden        -- restricted
 - `404` - Not Found
-- `409` - Conflict
+- `409` - Conflict         -- already exists
+- `429` - Max Retries Exeeded -- Rate Limiting
 - `500` - Server Error
 
 ## 📈 Future Enhancements
@@ -240,3 +242,23 @@ Pull requests are welcome. For major changes, please open an issue first.
 ## 📄 License
 
 ISC
+
+
+
+
+
+
+
+
+
+
+# PRODUCT ENUMS => product_status
+draft | active | archived
+
+
+# USERS ENUMS => user_status
+active | suspended | deleted
+
+# ORDERS ENUMS  => order_status
+pending | paid | shipped | cancelled
+

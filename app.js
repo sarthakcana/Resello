@@ -1,25 +1,58 @@
 const express = require("express");
 const cors = require("cors");
-const bodyParser=require('body-parser')
+const bodyParser = require('body-parser')
 const cookieParser = require("cookie-parser");
-const authRoutes = require("./routes/auth.routes");
-const productRoutes=require('./routes/product.routes')
-
+const morgan = require('morgan');
+const responseLogger = require('./config/response.logger')
+const fs = require("fs");
+// const authRoutes = require("./routes/auth.routes");
+// const productRoutes = require("./routes/product.routes")
+// const systemRoutes = require("./routes/system.routes");
+// const userRoutes = require("./routes/user.routes");
+// const uiRoutes = require("./routes/ui.routes");
+// const sellRoutes = require("./routes/sell.routes");
+const authMiddleware = require("./middlewares/auth.middleware");
 const app = express();
 
 app.use(cors());
+// app.use(cors({
+//   origin: true,
+//   credentials: true
+// }));
 app.use(express.json());
+app.use("/uploads", express.static("uploads"));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-app.use(bodyParser.urlencoded({extended:true}))
+// app.use(bodyParser.urlencoded({ extended: true }))
 app.use(cookieParser());
+app.use(morgan('dev'))
+app.use(responseLogger)
 
+app.use("/auth", require("./routes/auth.routes"));
+app.use("/product", require("./routes/product.routes"));
+app.use("/users", require("./routes/user.routes"));
+app.use("/system", require("./routes/system.routes"));
+app.use("/sell", require("./routes/sell.routes"));
+app.use("/ui", require("./routes/ui.routes"));
 
-app.use("/auth", authRoutes);
-app.use("/product", productRoutes);
+// ERROR HANDLING
+const error_handler = require("./middlewares/error_handler.middleware")
+app.use(error_handler)
+
 
 // 200 Health Check
 app.get("/", (req, res) => {
   res.status(200).json({ status: "success", code: 200 });
+});
+
+// LOGS
+
+app.get("/logs", (req, res) => {
+  const d = new Date().toISOString().split("T")[0];
+  const logs = fs.readFileSync("logs/app.log." + d, "utf8")
+    .trim()
+    .split("\n")
+    .map(line => JSON.parse(line));
+  res.json(logs.reverse());
 });
 
 // NOT FOUND ERROR
