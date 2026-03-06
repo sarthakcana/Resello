@@ -24,7 +24,7 @@ exports.createModelConfig = async ({ model_slug, name, base_price }) => {
     );
     if (exists.rowCount === 0) throw { status: 404, message: "Model not found" };
     const model_id = exists.rows[0].id;
-    
+
     const dup = await pool.query(
         `SELECT 1 FROM sell_model_configs WHERE model_id=$1 AND name=$2`, [model_id, name]
     );
@@ -65,32 +65,83 @@ exports.deleteModelConfig = async (id) => {
 
 exports.getQuestions = async () => {
     const questions = await pool.query(
-        `SELECT sq.id, sq.text, sq.description, sq.input_type, sq.sort_index, sq.is_active
-         FROM sell_questions sq
-         WHERE sq.is_active=true
-         ORDER BY sq.sort_index, sq.id`
+        `
+            SELECT  que.id,
+                    que.text,
+                    que.sort_index,
+                    que.input_type,
+                        (
+                            SELECT jsonb_agg(
+                                jsonb_build_object(
+                                    'id', qo.id,
+                                    'text', qo.text,
+                                    'deduction', qo.price_deduction,
+                                    'show',
+                                    COALESCE(
+                                        (
+                                            SELECT jsonb_agg(show_question_id)
+                                            FROM sell_question_conditions WHERE trigger_option_id=qo.id
+                                        ),'[]'::JSONB
+                                    )
+                                )
+                            )
+                            FROM sell_question_options qo
+                            WHERE qo.question_id = que.id
+                        ) options,
+                        (
+                            SELECT jsonb_agg(
+                                jsonb_build_object(
+                                    'id', cat.id,
+                                    'name', cat.name
+                                )
+                            )
+                            FROM sell_category_questions scq
+                            JOIN categories cat ON scq.category_id=cat.id
+                            WHERE scq.question_id=que.id
+                        ) categories
+            FROM sell_questions que
+            ORDER BY que.sort_index, que.id
+        `
     );
-
-    for (const q of questions.rows) {
-        const opts = await pool.query(
-            `SELECT id, text, price_deduction, sort_index
-             FROM sell_question_options
-             WHERE question_id=$1
-             ORDER BY sort_index, id`,
-            [q.id]
-        );
-        q.options = opts.rows;
-
-        const cats = await pool.query(
-            `SELECT c.id, c.name, scq.sort_index
-             FROM sell_category_questions scq
-             JOIN categories c ON scq.category_id=c.id
-             WHERE scq.question_id=$1
-             ORDER BY scq.sort_index`,
-            [q.id]
-        );
-        q.categories = cats.rows;
-    }
+    return questions.rows;
+};
+exports.getQuestionsByModel = async ({ modelSlug }) => {
+    if (!modelSlug) throw { status: 400, message: "Model Slug is required" };
+    const questions = await pool.query(
+        `
+            SELECT m.name model,jsonb_agg(
+                jsonb_build_object(
+                    'id', que.id,
+                    'question', que.text,
+                    'que_type', que.input_type,
+                    'options',
+                        (
+                            SELECT jsonb_agg(
+                                jsonb_build_object(
+                                    'id', qo.id,
+                                    'text', qo.text,
+                                    'deduction', qo.price_deduction,
+                                    'show',
+                                    COALESCE(
+                                        (
+                                            SELECT jsonb_agg(show_question_id)
+                                            FROM sell_question_conditions WHERE trigger_option_id=qo.id
+                                        ),'[]'::JSONB
+                                    )
+                                )
+                            )
+                            FROM sell_question_options qo
+                            WHERE qo.question_id = que.id
+                    )
+                )
+            ) questions FROM models m
+            JOIN sell_category_questions cq ON cq.category_id=m.category_id
+            JOIN sell_questions que ON que.id=cq.question_id
+            WHERE m.slug=$1
+            GROUP BY m.name
+        `,
+        [modelSlug]
+    );
     return questions.rows;
 };
 
@@ -120,6 +171,7 @@ exports.getQuestionsByCategory = async (category_id) => {
 };
 
 exports.createQuestion = async (data) => {
+    console.log("Creating question with data:", data);
     const { text, description, input_type, sort_index, category_slugs } = data;
     if (!text || !input_type) throw { status: 400, message: "text and input_type are required" };
 
@@ -257,6 +309,7 @@ exports.getConditions = async (question_id) => {
 };
 
 exports.createCondition = async (data) => {
+    console.log("Creating condition with data:", data);
     const { trigger_option_id, show_question_id } = data;
     if (!trigger_option_id || !show_question_id) throw { status: 400, message: "trigger_option_id and show_question_id are required" };
 

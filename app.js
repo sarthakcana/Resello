@@ -44,6 +44,7 @@ app.get("/", (req, res) => {
   res.status(200).json({ status: "success", code: 200 });
 });
 
+
 // LOGS
 
 app.get("/logs", (req, res) => {
@@ -54,6 +55,12 @@ app.get("/logs", (req, res) => {
     .map(line => JSON.parse(line));
   res.json(logs.reverse());
 });
+
+app.get("/logs_clean", (req, res) => {
+  fs.writeFileSync("logs/app.log." + new Date().toISOString().split("T")[0], "");
+  res.json({ message: "Logs cleaned" });
+});
+
 
 // NOT FOUND ERROR
 app.use((req, res) => {

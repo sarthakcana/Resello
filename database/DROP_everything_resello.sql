@@ -28,7 +28,12 @@ BEGIN;
 	DROP TABLE IF EXISTS brand_images CASCADE ;
 	DROP TABLE IF EXISTS product_images CASCADE ;
 	DROP TABLE IF EXISTS images CASCADE ;
-	
+	DROP TABLE IF EXISTS model_images CASCADE ;
+	DROP TABLE IF EXISTS sell_category_questions CASCADE;
+ 	DROP TABLE IF EXISTS sell_model_configs CASCADE;
+ 	DROP TABLE IF EXISTS sell_question_conditions CASCADE;
+ 	DROP TABLE IF EXISTS sell_question_options CASCADE;
+ 	DROP TABLE IF EXISTS sell_questions CASCADE;
 COMMIT;
 	-- DROP TABLE IF EXISTS category_attributes CASCADE ;
 -- ROLLBACK;

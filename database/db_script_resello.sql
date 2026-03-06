@@ -216,6 +216,15 @@ BEGIN;
 	);
 
 	-- sell flow
+	CREATE TABLE sell_questions (
+		id BIGSERIAL PRIMARY KEY,
+		text TEXT NOT NULL,
+		description TEXT,                          -- helper text shown below question
+		input_type VARCHAR(20) NOT NULL,           -- 'yes_no', 'single_select', 'multi_select'
+		sort_index INT DEFAULT 1,
+		is_active BOOLEAN DEFAULT TRUE
+	);
+	
 	CREATE TABLE sell_model_configs (
 		id BIGSERIAL PRIMARY KEY,
 		model_id BIGINT NOT NULL REFERENCES models(id) ON DELETE CASCADE,
@@ -224,6 +233,14 @@ BEGIN;
 		is_active BOOLEAN DEFAULT TRUE
 	);
 
+	CREATE TABLE sell_question_options (
+		id BIGSERIAL PRIMARY KEY,
+		question_id BIGINT NOT NULL REFERENCES sell_questions(id) ON DELETE CASCADE,
+		text VARCHAR(100) NOT NULL,                -- "Yes", "No", "Minor Scratches"
+		price_deduction NUMERIC(10,2) DEFAULT 0,  -- deducted from base price
+		sort_index INT DEFAULT 1
+	);
+	
 	create table sell_listings(
 		id BIGSERIAL PRIMARY KEY,
 		user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
@@ -268,28 +285,13 @@ BEGIN;
 	FOR EACH ROW
 	EXECUTE FUNCTION enum_master_sort_index();
 
-	CREATE TABLE sell_questions (
-		id BIGSERIAL PRIMARY KEY,
-		text TEXT NOT NULL,
-		description TEXT,                          -- helper text shown below question
-		input_type VARCHAR(20) NOT NULL,           -- 'yes_no', 'single_select', 'multi_select'
-		sort_index INT DEFAULT 1,
-		is_active BOOLEAN DEFAULT TRUE
-	);
 
-	CREATE TABLE sell_question_options (
-		id BIGSERIAL PRIMARY KEY,
-		question_id BIGINT NOT NULL REFERENCES sell_questions(id) ON DELETE CASCADE,
-		text VARCHAR(100) NOT NULL,                -- "Yes", "No", "Minor Scratches"
-		price_deduction NUMERIC(10,2) DEFAULT 0,  -- deducted from base price
-		sort_index INT DEFAULT 1
-	);
 
-	-- CREATE TABLE sell_question_conditions (
-	-- 	id BIGSERIAL PRIMARY KEY,
-	-- 	trigger_option_id BIGINT NOT NULL REFERENCES sell_question_options(id) ON DELETE CASCADE,
-	-- 	show_question_id BIGINT NOT NULL REFERENCES sell_questions(id) ON DELETE CASCADE
-	-- );
+	CREATE TABLE sell_question_conditions (
+		id BIGSERIAL PRIMARY KEY,
+		trigger_option_id BIGINT NOT NULL REFERENCES sell_question_options(id) ON DELETE CASCADE,
+		show_question_id BIGINT NOT NULL REFERENCES sell_questions(id) ON DELETE CASCADE
+	);
 	
 	CREATE TABLE sell_category_questions (
 		category_id BIGINT REFERENCES categories(id) ON DELETE CASCADE,
