@@ -1,264 +1,366 @@
-# Cashify Backend API
+﻿# Resello Backend API
 
-Enterprise-grade backend for device resale marketplace platform (Cashify clone).
+Backend API for a device resale marketplace platform built on Node.js + Express + PostgreSQL.
+
+---
 
 ## 📁 Project Structure
 
 ```
-cashify-backend/
-├── src/
-│   ├── config/
-│   │   └── database.js          # PostgreSQL connection config
-│   ├── controllers/
-│   │   ├── authController.js    # Authentication logic
-│   │   ├── deviceController.js  # Device CRUD operations
-│   │   ├── orderController.js   # Order management
-│   │   └── categoryController.js # Categories & brands
-│   ├── models/
-│   │   ├── User.js              # User model
-│   │   ├── Device.js            # Device model
-│   │   ├── Order.js             # Order model
-│   │   └── Category.js          # Category model
-│   ├── middlewares/
-│   │   ├── auth.js              # JWT authentication
-│   │   ├── validate.js          # Request validation
-│   │   └── errorHandler.js      # Global error handler
-│   ├── validators/
-│   │   ├── authValidator.js     # Auth validation rules
-│   │   └── deviceValidator.js   # Device validation rules
-│   ├── routes/
-│   │   ├── authRoutes.js        # Auth endpoints
-│   │   ├── deviceRoutes.js      # Device endpoints
-│   │   ├── orderRoutes.js       # Order endpoints
-│   │   └── categoryRoutes.js    # Category endpoints
-│   ├── database/
-│   │   ├── schema.sql           # Database schema
-│   │   └── migrate.js           # Migration runner
-│   └── server.js                # Application entry point
-├── .env.example                  # Environment variables template
-├── .gitignore
+resello-backend/
+├── app.js                          # Express app setup, middleware & route mounting
+├── server.js                       # HTTP server entry point & graceful shutdown
 ├── package.json
-└── README.md
+├── config/
+│   ├── database.js                 # PostgreSQL connection pool
+│   ├── multer.config.js            # File upload configuration
+│   ├── delete.config.js            # File deletion helpers
+│   ├── response.logger.js          # Response logging middleware
+│   └── winston.logger.js           # Winston logger setup
+├── controllers/
+│   ├── auth.controller.js
+│   ├── product.controller.js
+│   ├── sell.controller.js
+│   ├── system.controller.js
+│   ├── ui.controller.js
+│   └── user.controller.js
+├── middlewares/
+│   ├── auth.middleware.js          # JWT verification
+│   ├── async_handler.js            # Async error wrapper
+│   ├── error_handler.middleware.js # Global error handler
+│   └── req_body.middleware.js      # Request body parser / normalizer
+├── providers/
+│   └── email.provider.js           # Nodemailer email sending
+├── routes/
+│   ├── auth.routes.js
+│   ├── product.routes.js
+│   ├── sell.routes.js
+│   ├── system.routes.js
+│   ├── ui.routes.js
+│   └── user.routes.js
+├── services/
+│   ├── auth.service.js
+│   ├── product.service.js
+│   ├── sell.service.js
+│   ├── system.service.js
+│   ├── ui.service.js
+│   └── user.service.js
+├── database/
+│   ├── db_script_resello.sql       # Full schema
+│   ├── pre_requisites_data.sql     # Seed / prerequisite data
+│   └── DROP_everything_resello.sql # Teardown script
+├── uploads/                        # Locally stored uploaded files
+└── logs/                           # Daily rotating log files
 ```
+
+---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js (v14+)
-- PostgreSQL (v12+)
-- npm or yarn
+
+- Node.js v18+
+- PostgreSQL v14+
+- npm
 
 ### Installation
 
-1. **Clone & Install**
 ```bash
 npm install
 ```
 
-2. **Setup Database**
-```bash
-# Create PostgreSQL database
-psql -U postgres
-CREATE DATABASE Resello;
-\q
+### Environment Variables
+
+Create a `.env` file in the root (never commit it):
+
+```env
+PORT=1000
+NODE_ENV=development
+
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=resello
+DB_USER=postgres
+DB_PASSWORD=<your_password>
+
+DATABASE_URL=postgresql://username:testpass@localuser/Resello
+
+JWT_SECRET=<your_jwt_secret>
+JWT_EXPIRES_IN=7d
+JWT_REFRESH_SECRET=<your_refresh_secret>
+
+EMAIL_HOST=smtp.example.com
+EMAIL_PORT=587
+EMAIL_USER=<email>
+EMAIL_PASS=<email_password>
 ```
 
-3. **Configure Environment**
-```bash
-cp .env.example .env
-# Edit .env with your database credentials
-```
+### Run
 
-4. **Run Migrations**
 ```bash
-npm run migrate
-```
-
-5. **Start Server**
-```bash
-# Development
-npm run dev
+# Development (nodemon)
+npx nodemon server.js
 
 # Production
-npm start
+node server.js
 ```
 
-## 📚 API Endpoints
+---
 
-### Authentication
-```
-POST   /api/auth/register       - Register new user
-POST   /api/auth/login          - User login
-POST   /api/auth/logout          - User logOut
-GET    /api/auth/profile        - Get user profile (auth)
-PUT    /api/auth/profile        - Update profile (auth)
+## 📚 API Reference
+
+> Base URL: `http://localhost:1000`
+
+---
+
+### Authentication — `/auth`
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/auth/initiate` | Start auth flow — send OTP to email |
+| POST | `/auth/request_otp` | Request a new OTP |
+| POST | `/auth/resend_otp` | Resend OTP to same email |
+| POST | `/auth/verify_otp` | Verify OTP and receive tokens |
+| POST | `/auth/login` | Login with email + password |
+| POST | `/auth/register` | Register a new user |
+| POST | `/auth/refresh` | Refresh access token using refresh token |
+| DELETE | `/auth/logout` | Logout / invalidate session |
+
+---
+
+### Products — `/product`
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/product/create` | Create product listing (multipart: `image[]`) |
+| GET | `/product/get_products` | Get all products |
+| GET | `/product/get_products/:id` | Get product by ID |
+| PUT | `/product/update/:id` | Update product |
+| DELETE | `/product/delete/:id` | Soft-delete product |
+| GET | `/product/slug/:slug` | Get product by slug |
+| GET | `/product/sku/:sku` | Get product by SKU |
+| GET | `/product/brand/:brandSlug/products` | Products for a brand |
+| GET | `/product/brand/:brandSlug/series` | Series for a brand |
+| GET | `/product/brand/:brandSlug/models` | Models for a brand |
+| GET | `/product/brand/:brandSlug/:seriesSlug/models` | Models for a brand + series |
+| GET | `/product/:brandSlug/:modelSlug` | Get model by brand + model slug |
+| GET | `/product/:modelSlug` | Get questions by model slug |
+
+---
+
+### Users — `/users`
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/users/create` | Create user |
+| GET | `/users/get_users` | Get all users |
+| GET | `/users/get_users/:id` | Get user by ID |
+| DELETE | `/users/delete_user/:id` | Delete user |
+
+---
+
+### System — `/system`
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/system/get_services` | Get all services |
+| POST | `/system/create_service` | Create service (multipart: `image`) |
+| DELETE | `/system/delete_service/:id` | Delete service |
+| GET | `/system/get_categories/:sub` | Get categories (pass `true` for subcategories) |
+| POST | `/system/create_category` | Create category (multipart: `image`) |
+| DELETE | `/system/delete_category/:id` | Delete category |
+| GET | `/system/get_brands` | Get all brands |
+| GET | `/system/get_brands/:cat_slug` | Get brands by category slug |
+| POST | `/system/create_brand` | Create brand (multipart: `image`) |
+| DELETE | `/system/delete_brand/:id` | Delete brand |
+| GET | `/system/get_roles` | Get all roles |
+| GET | `/system/series/:brand_slug` | Get series for a brand |
+| POST | `/system/series` | Create a series |
+| GET | `/system/get_models/:cat_slug/:brand_slug/:series_slug` | Get models |
+| POST | `/system/models` | Create model (multipart: `image`) |
+
+---
+
+### Sell — `/sell`
+
+#### Model Configs
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/sell/configs/:model_slug` | Get configs for a model |
+| POST | `/sell/configs` | Create model config |
+| PUT | `/sell/configs/:id` | Update model config |
+| DELETE | `/sell/configs/:id` | Delete model config |
+
+#### Sell Questions
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/sell/questions` | Get all questions |
+| GET | `/sell/questions/:modelSlug` | Get questions by model |
+| GET | `/sell/questions/category/:category_id` | Get questions by category |
+| POST | `/sell/questions` | Create question |
+| PUT | `/sell/questions/:id` | Update question |
+| DELETE | `/sell/questions/:id` | Deactivate question |
+
+**Create/Update question payload:**
+```json
+{
+  "text": "Is the screen cracked?",
+  "description": "Check for any cracks or dead pixels",
+  "input_type": "yes_no",
+  "sort_index": 1,
+  "category_slugs": ["mobile", "tablet"]
+}
 ```
 
-### Devices
-```
-POST   /api/devices             - Create device listing (auth)
-GET    /api/devices             - Get all devices (public)
-GET    /api/devices/my-devices  - Get user's devices (auth)
-GET    /api/devices/:id         - Get device by ID
-PUT    /api/devices/:id         - Update device (auth)
-DELETE /api/devices/:id         - Delete device (auth)
+> `input_type` must be one of: `yes_no` | `single_select` | `multi_select`
+> For `yes_no` questions, **Yes** and **No** options are auto-created by the system on question creation and are readonly — they can be used immediately to wire conditional appearance rules.
+
+#### Question Options
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/sell/options/:question_id` | Get options for a question |
+| POST | `/sell/options` | Create option |
+| PUT | `/sell/options/:id` | Update option |
+| DELETE | `/sell/options/:id` | Delete option |
+
+**Option payload:**
+```json
+{
+  "question_id": 1,
+  "text": "Cracked",
+  "price_deduction": 2000,
+  "sort_index": 1
+}
 ```
 
-### Orders
-```
-POST   /api/orders              - Create order (auth)
-GET    /api/orders/my-orders    - Get user's orders (auth)
-GET    /api/orders/:id          - Get order by ID (auth)
-GET    /api/orders              - Get all orders (admin)
-PUT    /api/orders/:id/status   - Update order status (admin)
+#### Conditions (Conditional Appearance)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/sell/conditions/:question_id` | Get conditions for a question |
+| POST | `/sell/conditions` | Create condition |
+| DELETE | `/sell/conditions/:id` | Delete condition |
+
+**Condition payload:**
+```json
+{
+  "trigger_option_id": 5,
+  "show_question_id": 3
+}
 ```
 
-### Categories
-```
-GET    /api/categories                    - Get all categories
-GET    /api/categories/:id/brands         - Get brands for category
-```
+> When option `trigger_option_id` is selected by the user, question `show_question_id` becomes visible in the sell flow.
+
+#### Category–Question Mapping
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/sell/category-questions/:category_id` | Get questions for a category |
+| POST | `/sell/category-questions` | Map question to category |
+| DELETE | `/sell/category-questions/:category_id/:question_id` | Unmap question from category |
+
+#### Sell Flow & Pricing
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/sell/flow/:category_slug` | Full question flow for a category (with conditions) |
+| POST | `/sell/calculate-price` | Calculate device price from submitted answers |
+
+#### Listings (Sell Leads)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/sell/listings` | Get all sell listings |
+| POST | `/sell/listings` | Create sell listing |
+| PUT | `/sell/listings/:id/assign` | Assign listing to a merchant |
+| PUT | `/sell/listings/:id/transfer` | Transfer listing |
+| PUT | `/sell/listings/:id/reject` | Reject listing |
+| GET | `/sell/merchants` | Get all merchants |
+
+---
+
+### UI — `/ui`
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/ui/home_banners` | Get home page banners |
+
+---
+
+### System Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/` | Health check — returns `{ status: "success", code: 200 }` |
+| GET | `/logs` | Tail today's application log (array of JSON log entries, newest first) |
+
+---
 
 ## 🔐 Authentication
 
-The API uses JWT (JSON Web Tokens) for authentication.
+JWT-based. Pass the access token in every protected request:
 
-**Headers:**
 ```
-Authorization: Bearer <your_token>
-```
-
-## 📝 Example Requests
-
-### Register User
-```bash
-curl -X POST http://localhost:5000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "John Doe",
-    "email": "john@example.com",
-    "phone": "9876543210",
-    "password": "password123",
-    "city": "Mumbai",
-    "state": "Maharashtra"
-  }'
+Authorization: Bearer <access_token>
 ```
 
-### Create Device Listing
-```bash
-curl -X POST http://localhost:5000/api/devices \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{
-    "category_id": 1,
-    "brand_id": 1,
-    "model": "iPhone 13 Pro",
-    "variant": "256GB",
-    "physical_condition": "excellent",
-    "functional_status": "fully_functional",
-    "estimated_price": 65000,
-    "warranty_status": "active"
-  }'
-```
+Refresh via `POST /auth/refresh`.
 
-## 🗄️ Database Schema
+---
 
-### Key Tables
-- **users** - User accounts and profiles
-- **categories** - Device categories (Mobile, Laptop, etc.)
-- **brands** - Device brands (Apple, Samsung, etc.)
-- **devices** - Device listings with conditions & pricing
-- **inspections** - Quality inspection records
-- **orders** - Order details and tracking
-- **price_history** - Historical pricing data
+## 🚦 HTTP Status Codes
 
-## 🛡️ Security Features
+| Code | Meaning | When used |
+|------|---------|-----------|
+| `200` | OK | Successful read / update / operation |
+| `201` | Created | Resource successfully created |
+| `400` | Bad Request | Missing or invalid parameters |
+| `401` | Unauthorized | Invalid credentials or expired OTP |
+| `403` | Forbidden | Account inactive / access denied |
+| `404` | Not Found | Resource does not exist |
+| `409` | Conflict | Duplicate resource (already exists) |
+| `429` | Too Many Requests | OTP / auth rate limit exceeded |
+| `500` | Internal Server Error | Unexpected server-side failure |
 
-- JWT authentication
-- Password hashing with bcrypt
-- Input validation with express-validator
-- SQL injection prevention (parameterized queries)
-- Helmet.js for HTTP headers security
-- CORS configuration
-- Rate limiting ready
-
-## 🔧 Environment Variables
-
-```env
-NODE_ENV=development
-PORT=5000
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=cashify_db
-DB_USER=postgres
-DB_PASSWORD=your_password
-JWT_SECRET=your_jwt_secret
-JWT_EXPIRE=7d
-```
+---
 
 ## 📦 Dependencies
 
-**Core:**
-- express - Web framework
-- pg - PostgreSQL client
-- bcryptjs - Password hashing
-- jsonwebtoken - JWT authentication
+| Package | Purpose |
+|---------|---------|
+| `express` | Web framework |
+| `pg` | PostgreSQL client |
+| `bcrypt` | Password hashing |
+| `jsonwebtoken` | JWT access & refresh tokens |
+| `multer` | File / image uploads |
+| `nodemailer` | Transactional email (OTP delivery) |
+| `winston` + `winston-daily-rotate-file` | Structured daily rotating logs |
+| `morgan` | HTTP request access logging |
+| `cookie-parser` | Cookie parsing |
+| `cors` | Cross-origin request handling |
+| `dotenv` | Environment variable loading |
+| `slugify` | Auto slug generation |
+| `uuid` | UUID generation |
 
-**Middleware:**
-- cors - CORS handling
-- helmet - Security headers
-- morgan - HTTP logging
-- compression - Response compression
+---
 
-**Validation:**
-- express-validator - Request validation
+## 🗄️ Enums
 
-## 🚦 Status Codes
+```
+product_status : draft | active | archived
+user_status    : active | suspended | deleted
+order_status   : pending | paid | shipped | cancelled
+input_type     : yes_no | single_select | multi_select
+```
 
-- `200` - Success
-- `201` - Created
-- `400` - Bad Request      -- unsufficient params
-- `401` - Unauthorized     -- login failed
-- `403` - Forbidden        -- restricted
-- `404` - Not Found
-- `409` - Conflict         -- already exists
-- `429` - Max Retries Exeeded -- Rate Limiting
-- `500` - Server Error
+---
 
-## 📈 Future Enhancements
+## 📝 Logging
 
-- [ ] Image upload with cloud storage
-- [ ] Real-time notifications
-- [ ] Payment gateway integration
-- [ ] Advanced search & filters
-- [ ] Analytics dashboard
-- [ ] Email/SMS notifications
-- [ ] Admin panel APIs
-
-## 🤝 Contributing
-
-Pull requests are welcome. For major changes, please open an issue first.
-
-## 📄 License
-
-ISC
-
-
-
-
-
-
-
-
-
-
-# PRODUCT ENUMS => product_status
-draft | active | archived
-
-
-# USERS ENUMS => user_status
-active | suspended | deleted
-
-# ORDERS ENUMS  => order_status
-pending | paid | shipped | cancelled
-
+- Application logs: `logs/app.log.<YYYY-MM-DD>` — daily rotation via Winston
+- HTTP access log: morgan `dev` format to stdout
+- View today's log: `GET /logs`
+- Clean today's logs: `GET /logs_clean`

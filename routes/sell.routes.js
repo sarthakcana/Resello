@@ -11,6 +11,7 @@ router.delete('/configs/:id', sellController.deleteModelConfig);
 
 // Questions
 router.get('/questions', sellController.getQuestions);
+router.get('/questions/:modelSlug', sellController.getQuestionsByModel);
 router.get('/questions/category/:category_id', sellController.getQuestionsByCategory);
 router.post('/questions', reqBody, sellController.createQuestion);
 router.put('/questions/:id', reqBody, sellController.updateQuestion);

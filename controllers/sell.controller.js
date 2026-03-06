@@ -33,6 +33,11 @@ exports.getQuestions = async (req, res) => {
     res.status(200).json(data);
 };
 
+exports.getQuestionsByModel = async (req, res) => {
+    const data = await sellService.getQuestionsByModel(req.params);
+    res.status(200).json(data);
+};
+
 exports.getQuestionsByCategory = async (req, res) => {
     const { category_id } = req.params;
     const data = await sellService.getQuestionsByCategory(category_id);

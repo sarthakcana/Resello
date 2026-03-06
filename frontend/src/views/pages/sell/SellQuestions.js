@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect, useMemo } from "react";
 import CIcon from "@coreui/icons-react";
 import {
     cilPlus, cilX, cilCheck, cilPencil, cilTrash, cilChevronRight,
@@ -17,9 +17,51 @@ const INPUT_TYPES = [
     { value: "multi_select", label: "Multi Select" },
 ];
 
+// yes_no placeholder options â€” shown when DB options haven't loaded yet
+const YES_NO_DEFAULTS = [
+    { id: null, text: "Yes", price_deduction: 0, sort_index: 1, show: [], _synthetic: true },
+    { id: null, text: "No", price_deduction: 0, sort_index: 2, show: [], _synthetic: true },
+];
+
+/**
+ * Normalize a raw option from the API.
+ * Handles both field naming conventions: price_deduction vs deduction.
+ * Ensures `show` is always an array of strings.
+ */
+const normalizeOption = (o = {}) => ({
+    ...o,
+    id: o.id ?? null,
+    text: o.text ?? "",
+    price_deduction: Number(o.price_deduction ?? o.deduction ?? 0),
+    sort_index: o.sort_index ?? 0,
+    show: Array.isArray(o.show) ? o.show.map(String) : [],
+});
+
+/**
+ * Normalize a raw question from the API.
+ * Ensures options, categories are always arrays and IDs are strings.
+ */
+const normalizeQuestion = (q = {}) => ({
+    ...q,
+    id: String(q.id ?? ""),
+    text: q.text ?? "",
+    description: q.description ?? "",
+    input_type: q.input_type ?? "single_select",
+    sort_index: q.sort_index ?? q.index ?? 0,
+    options: Array.isArray(q.options) ? q.options.map(normalizeOption) : [],
+    categories: Array.isArray(q.categories) ? q.categories : [],
+});
+
+/** Effective options for a question â€” always returns Yes/No stubs for yes_no type. */
+const getEffectiveOptions = (q) => {
+    if (!q) return [];
+    if (q.input_type !== "yes_no") return q.options ?? [];
+    return (q.options?.length > 0) ? q.options : YES_NO_DEFAULTS;
+};
+
 const inputTypeBadge = (type) => {
     const map = { yes_no: "bg-info", single_select: "bg-primary", multi_select: "bg-warning text-dark" };
-    return <span className={`badge ${map[type] || "bg-secondary"}`}>{type.replace("_", " ")}</span>;
+    return <span className={`badge ${map[type] || "bg-secondary"}`}>{(type ?? "").replace(/_/g, " ")}</span>;
 };
 
 export default function SellQuestions() {
@@ -32,16 +74,16 @@ export default function SellQuestions() {
 
     // Inline edit state
     const [editingId, setEditingId] = useState(null);
-    const [editData, setEditData] = useState({ text: "", description: "", input_type: "", sort_index: 1 });
+    const [editData, setEditData] = useState({ text: "", description: "", input_type: "single_select", sort_index: 1 });
 
     // Add question form
     const [newQ, setNewQ] = useState({ text: "", description: "", input_type: "yes_no", category_slugs: [] });
 
-    // Options
+    // Options â€” shared add form; keyed by expanded question
     const [newOpt, setNewOpt] = useState({ text: "", price_deduction: 0 });
     const [savingOpt, setSavingOpt] = useState(false);
 
-    // Conditions
+    // Conditions fetched from API for the currently expanded question (gives us IDs for deletion)
     const [conditions, setConditions] = useState([]);
     const [loadingConds, setLoadingConds] = useState(false);
     const [newCond, setNewCond] = useState({ trigger_option_id: "", show_question_id: "" });
@@ -49,18 +91,76 @@ export default function SellQuestions() {
     // Category mapping
     const [mapCatSlug, setMapCatSlug] = useState("");
 
+    // ── Filters ────────────────────────────────────────────
+    const [filterText, setFilterText] = useState("");
+    const [filterCategory, setFilterCategory] = useState("");
+    const [filterType, setFilterType] = useState("");
+    const [filterConditional, setFilterConditional] = useState(""); // "" | "yes" | "no"
+
     useEffect(() => {
         fetchQuestions();
         fetchCategories();
     }, []);
 
+    // â”€â”€ Derived data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    /**
+     * Set of question IDs that are referenced in at least one option's `show` array.
+     * These questions are conditional â€” they don't appear by default in the sell flow.
+     */
+    const conditionalQIds = useMemo(() => {
+        const ids = new Set();
+        questions.forEach(q => {
+            (q.options ?? []).forEach(o => {
+                (o.show ?? []).forEach(id => ids.add(String(id)));
+            });
+        });
+        return ids;
+    }, [questions]);
+
+    /**
+     * For a given question, find which options (from other questions) trigger its appearance.
+     * Returns: [{ fromQuestion, option }]
+     */
+    const getTriggeredBy = (questionId) => {
+        const qId = String(questionId);
+        const triggers = [];
+        questions.forEach(q => {
+            (q.options ?? []).forEach(o => {
+                if ((o.show ?? []).includes(qId)) {
+                    triggers.push({ fromQuestion: q, option: o });
+                }
+            });
+        });
+        return triggers;
+    };
+
+    /**
+     * Outgoing conditions for a question derived from its options' `show` arrays.
+     * Returns: [{ option, shownQuestion }]
+     */
+    const getOutgoingConditions = (q) => {
+        const results = [];
+        (q?.options ?? []).forEach(o => {
+            (o.show ?? []).forEach(shownId => {
+                const shownQ = questions.find(oq => String(oq.id) === String(shownId));
+                if (shownQ) results.push({ option: o, shownQuestion: shownQ });
+            });
+        });
+        return results;
+    };
+
+    // â”€â”€ Fetch helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
     const fetchQuestions = async () => {
         try {
             setLoading(true);
             const res = await get_sell_questions();
-            setQuestions(res.data);
+            const raw = Array.isArray(res.data) ? res.data : [];
+            setQuestions(raw.map(normalizeQuestion));
         } catch (e) {
-            console.log(e);
+            console.error(e);
+            setQuestions([]);
         } finally {
             setLoading(false);
         }
@@ -69,17 +169,18 @@ export default function SellQuestions() {
     const fetchCategories = async () => {
         try {
             const res = await get_categories("true");
-            setCategories(res.data);
+            setCategories(Array.isArray(res.data) ? res.data : []);
         } catch (e) {
-            console.log(e);
+            console.error(e);
         }
     };
 
     const fetchConditions = async (questionId) => {
+        if (!questionId) return;
         try {
             setLoadingConds(true);
             const res = await get_question_conditions(questionId);
-            setConditions(res.data);
+            setConditions(Array.isArray(res.data) ? res.data : []);
         } catch {
             setConditions([]);
         } finally {
@@ -87,29 +188,31 @@ export default function SellQuestions() {
         }
     };
 
-    // ── Question CRUD ──────────────────────────────────────
+    // â”€â”€ Question CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    const buildQuestionPayload = (data, sortIndex) => ({
+        text: (data.text ?? "").trim(),
+        description: (data.description ?? "").trim() || null,
+        input_type: data.input_type,
+        sort_index: parseInt(sortIndex) || 1,
+        category_slugs: Array.isArray(data.category_slugs) ? data.category_slugs : [],
+    });
 
     const handleCreateQuestion = async () => {
-        if (!newQ.text || !newQ.input_type) return;
+        if (!newQ.text?.trim() || !newQ.input_type) return;
         try {
             setSaving(true);
             const nextSortIndex = (questions.length > 0
                 ? Math.max(...questions.map(q => q.sort_index))
                 : 0) + 1;
-            const res = await create_sell_question({
-                text: newQ.text,
-                description: newQ.description || null,
-                input_type: newQ.input_type,
-                sort_index: nextSortIndex,
-                category_slugs: newQ.category_slugs
-            });
-            // Auto-create Yes / No options for yes_no questions
+            const res = await create_sell_question(buildQuestionPayload(newQ, nextSortIndex));
+            // Auto-create readonly Yes / No options so conditions can be wired immediately
             if (newQ.input_type === "yes_no") {
-                const newQuestionId = res.data?.id;
-                if (newQuestionId) {
+                const newQId = res.data?.id;
+                if (newQId) {
                     await Promise.all([
-                        create_question_option({ question_id: newQuestionId, text: "Yes", price_deduction: 0, sort_index: 1 }),
-                        create_question_option({ question_id: newQuestionId, text: "No", price_deduction: 0, sort_index: 2 }),
+                        create_question_option({ question_id: newQId, text: "Yes", price_deduction: 0, sort_index: 1 }),
+                        create_question_option({ question_id: newQId, text: "No", price_deduction: 0, sort_index: 2 }),
                     ]);
                 }
             }
@@ -117,7 +220,7 @@ export default function SellQuestions() {
             setNewQ({ text: "", description: "", input_type: "yes_no", category_slugs: [] });
             fetchQuestions();
         } catch (e) {
-            console.log(e?.response?.data?.message || "Failed");
+            console.error(e?.response?.data?.message || "Failed to create question");
         } finally {
             setSaving(false);
         }
@@ -125,22 +228,23 @@ export default function SellQuestions() {
 
     const startEditing = (q) => {
         setEditingId(q.id);
-        setEditData({ text: q.text, description: q.description || "", input_type: q.input_type, sort_index: q.sort_index });
+        setEditData({
+            text: q.text ?? "",
+            description: q.description ?? "",
+            input_type: q.input_type ?? "single_select",
+            sort_index: q.sort_index ?? 1,
+        });
     };
 
     const handleUpdateQuestion = async () => {
+        if (!editData.text?.trim()) return;
         try {
             setSaving(true);
-            await update_sell_question(editingId, {
-                text: editData.text,
-                description: editData.description || null,
-                input_type: editData.input_type,
-                sort_index: parseInt(editData.sort_index) || 1
-            });
+            await update_sell_question(editingId, buildQuestionPayload(editData, editData.sort_index));
             setEditingId(null);
             fetchQuestions();
         } catch (e) {
-            console.log(e?.response?.data?.message || "Failed");
+            console.error(e?.response?.data?.message || "Failed to update question");
         } finally {
             setSaving(false);
         }
@@ -150,97 +254,101 @@ export default function SellQuestions() {
         if (!confirm("Deactivate this question?")) return;
         try {
             await delete_sell_question(id);
+            if (expandedId === id) { setExpandedId(null); setConditions([]); }
             fetchQuestions();
-            if (expandedId === id) setExpandedId(null);
         } catch (e) {
-            console.log(e?.response?.data?.message || "Failed");
+            console.error(e?.response?.data?.message || "Failed to delete question");
         }
     };
 
     const toggleExpand = (q) => {
-        if (expandedId === q.id) {
+        const qId = String(q.id);
+        if (expandedId === qId) {
             setExpandedId(null);
             setConditions([]);
         } else {
-            setExpandedId(q.id);
+            setExpandedId(qId);
             setEditingId(null);
-            fetchConditions(q.id);
+            setNewOpt({ text: "", price_deduction: 0 });
+            setNewCond({ trigger_option_id: "", show_question_id: "" });
+            fetchConditions(qId);
         }
     };
 
-    // ── Option CRUD ────────────────────────────────────────
+    // â”€â”€ Option CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     const handleAddOption = async (questionId) => {
-        if (!newOpt.text) return;
+        if (!newOpt.text?.trim()) return;
         try {
             setSavingOpt(true);
-            const question = questions.find(q => q.id === questionId);
-            const nextOptSort = ((question?.options?.length) || 0) + 1;
+            const question = questions.find(q => String(q.id) === String(questionId));
+            const nextOptSort = (question?.options?.length ?? 0) + 1;
             await create_question_option({
                 question_id: questionId,
-                text: newOpt.text,
+                text: newOpt.text.trim(),
                 price_deduction: parseFloat(newOpt.price_deduction) || 0,
-                sort_index: nextOptSort
+                sort_index: nextOptSort,
             });
             setNewOpt({ text: "", price_deduction: 0 });
             fetchQuestions();
             fetchConditions(questionId);
         } catch (e) {
-            console.log(e?.response?.data?.message || "Failed");
+            console.error(e?.response?.data?.message || "Failed to add option");
         } finally {
             setSavingOpt(false);
         }
     };
 
     const handleDeleteOption = async (optId) => {
+        if (!optId) return;
         if (!confirm("Delete this option?")) return;
         try {
             await delete_question_option(optId);
             fetchQuestions();
             if (expandedId) fetchConditions(expandedId);
         } catch (e) {
-            console.log(e?.response?.data?.message || "Failed");
+            console.error(e?.response?.data?.message || "Failed to delete option");
         }
     };
 
-    // ── Condition CRUD ─────────────────────────────────────
+    // â”€â”€ Condition CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     const handleAddCondition = async () => {
         if (!newCond.trigger_option_id || !newCond.show_question_id) return;
         try {
             await create_question_condition({
                 trigger_option_id: parseInt(newCond.trigger_option_id),
-                show_question_id: parseInt(newCond.show_question_id)
+                show_question_id: parseInt(newCond.show_question_id),
             });
             setNewCond({ trigger_option_id: "", show_question_id: "" });
             fetchConditions(expandedId);
+            fetchQuestions(); // refresh show[] arrays
         } catch (e) {
-            console.log(e?.response?.data?.message || "Failed");
+            console.error(e?.response?.data?.message || "Failed to add condition");
         }
     };
 
     const handleDeleteCondition = async (condId) => {
+        if (!condId) return;
         try {
             await delete_question_condition(condId);
             fetchConditions(expandedId);
+            fetchQuestions();
         } catch (e) {
-            console.log(e?.response?.data?.message || "Failed");
+            console.error(e?.response?.data?.message || "Failed to delete condition");
         }
     };
 
-    // ── Category Mapping ───────────────────────────────────
+    // â”€â”€ Category Mapping â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     const handleMapCategory = async (questionId) => {
         if (!mapCatSlug) return;
         try {
-            await map_question_to_category({
-                category_slug: mapCatSlug,
-                question_id: questionId
-            });
+            await map_question_to_category({ category_slug: mapCatSlug, question_id: questionId });
             setMapCatSlug("");
             fetchQuestions();
         } catch (e) {
-            console.log(e?.response?.data?.message || "Failed");
+            console.error(e?.response?.data?.message || "Failed to map category");
         }
     };
 
@@ -249,18 +357,24 @@ export default function SellQuestions() {
             await unmap_question_from_category(categoryId, questionId);
             fetchQuestions();
         } catch (e) {
-            console.log(e?.response?.data?.message || "Failed");
+            console.error(e?.response?.data?.message || "Failed to unmap category");
         }
     };
 
     const toggleCategory = (catSlug) => {
         setNewQ(prev => ({
             ...prev,
-            category_slugs: prev.category_slugs.includes(catSlug)
-                ? prev.category_slugs.filter(slug => slug !== catSlug)
-                : [...prev.category_slugs, catSlug]
+            category_slugs: (prev.category_slugs ?? []).includes(catSlug)
+                ? prev.category_slugs.filter(s => s !== catSlug)
+                : [...(prev.category_slugs ?? []), catSlug],
         }));
     };
+
+    // â”€â”€ Render helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    const nextSortIndex = questions.length > 0
+        ? Math.max(...questions.map(q => q.sort_index ?? 0)) + 1
+        : 1;
 
     return (
         <div className="container py-4">
@@ -268,13 +382,15 @@ export default function SellQuestions() {
                 <div className="card-header bg-white d-flex justify-content-between align-items-center">
                     <div>
                         <h4 className="fw-bold text-uppercase mb-0">Sell Questions</h4>
-                        <small className="text-muted">Manage evaluation questions, options, conditions &amp; category mappings</small>
+                        <small className="text-muted">
+                            Manage evaluation questions, options, conditions &amp; category mappings
+                        </small>
                     </div>
                     <div className="d-flex gap-2">
                         <button className="btn btn-sm btn-outline-secondary" onClick={fetchQuestions} disabled={loading}>
                             <CIcon icon={cilReload} />
                         </button>
-                        <button className="btn btn-sm btn-primary" onClick={() => setShowAdd(!showAdd)}>
+                        <button className="btn btn-sm btn-primary" onClick={() => setShowAdd(v => !v)}>
                             <CIcon icon={showAdd ? cilX : cilPlus} className="me-1" />
                             {showAdd ? "Cancel" : "Add Question"}
                         </button>
@@ -282,7 +398,8 @@ export default function SellQuestions() {
                 </div>
 
                 <div className="card-body">
-                    {/* Add Question Form */}
+
+                    {/* â”€â”€ Add Question Form â”€â”€ */}
                     {showAdd && (
                         <div className="border rounded p-3 mb-4 bg-white shadow-sm">
                             <h6 className="fw-semibold mb-3">New Question</h6>
@@ -293,7 +410,7 @@ export default function SellQuestions() {
                                         type="text" className="form-control form-control-sm"
                                         placeholder="e.g. Is the screen cracked?"
                                         value={newQ.text}
-                                        onChange={e => setNewQ({ ...newQ, text: e.target.value })}
+                                        onChange={e => setNewQ(p => ({ ...p, text: e.target.value }))}
                                     />
                                 </div>
                                 <div className="col-md-3">
@@ -302,7 +419,7 @@ export default function SellQuestions() {
                                         type="text" className="form-control form-control-sm"
                                         placeholder="Helper text shown below question"
                                         value={newQ.description}
-                                        onChange={e => setNewQ({ ...newQ, description: e.target.value })}
+                                        onChange={e => setNewQ(p => ({ ...p, description: e.target.value }))}
                                     />
                                 </div>
                                 <div className="col-md-3">
@@ -310,7 +427,7 @@ export default function SellQuestions() {
                                     <select
                                         className="form-select form-select-sm"
                                         value={newQ.input_type}
-                                        onChange={e => setNewQ({ ...newQ, input_type: e.target.value })}
+                                        onChange={e => setNewQ(p => ({ ...p, input_type: e.target.value }))}
                                     >
                                         {INPUT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                                     </select>
@@ -318,7 +435,7 @@ export default function SellQuestions() {
                                 <div className="col-md-2">
                                     <label className="form-label small fw-semibold">Sort Order</label>
                                     <div className="form-control form-control-sm bg-light text-muted" style={{ cursor: "default" }}>
-                                        # {(questions.length > 0 ? Math.max(...questions.map(q => q.sort_index)) : 0) + 1}
+                                        # {nextSortIndex}
                                         <span className="ms-1 text-success small">(auto)</span>
                                     </div>
                                 </div>
@@ -328,7 +445,8 @@ export default function SellQuestions() {
                                         {categories.map(c => (
                                             <button
                                                 key={c.slug}
-                                                className={`btn btn-sm ${newQ.category_slugs.includes(c.slug) ? 'btn-primary' : 'btn-outline-secondary'}`}
+                                                type="button"
+                                                className={`btn btn-sm ${(newQ.category_slugs ?? []).includes(c.slug) ? "btn-primary" : "btn-outline-secondary"}`}
                                                 onClick={() => toggleCategory(c.slug)}
                                             >
                                                 {c.name}
@@ -341,14 +459,88 @@ export default function SellQuestions() {
                                 <button className="btn btn-sm btn-outline-secondary" onClick={() => setShowAdd(false)}>
                                     <CIcon icon={cilX} className="me-1" /> Cancel
                                 </button>
-                                <button className="btn btn-sm btn-success" onClick={handleCreateQuestion} disabled={saving || !newQ.text}>
-                                    <CIcon icon={cilCheck} className="me-1" /> {saving ? "Saving..." : "Save"}
+                                <button
+                                    className="btn btn-sm btn-success"
+                                    onClick={handleCreateQuestion}
+                                    disabled={saving || !newQ.text?.trim()}
+                                >
+                                    <CIcon icon={cilCheck} className="me-1" />
+                                    {saving ? "Saving..." : "Save"}
                                 </button>
                             </div>
                         </div>
                     )}
 
-                    {/* Questions List */}
+                    {/* â”€â”€ Questions List â”€â”€ */}
+
+                    {/* Filter Bar */}
+                    <div className="border rounded p-2 mb-3 bg-light">
+                        <div className="row g-2 align-items-end">
+                            <div className="col-md-4">
+                                <label className="form-label small fw-semibold mb-1">Search</label>
+                                <input
+                                    type="text"
+                                    className="form-control form-control-sm"
+                                    placeholder="Search by question text or description..."
+                                    value={filterText}
+                                    onChange={e => setFilterText(e.target.value)}
+                                />
+                            </div>
+                            <div className="col-md-3">
+                                <label className="form-label small fw-semibold mb-1">Category</label>
+                                <select
+                                    className="form-select form-select-sm"
+                                    value={filterCategory}
+                                    onChange={e => setFilterCategory(e.target.value)}
+                                >
+                                    <option value="">All Categories</option>
+                                    {categories.map(c => (
+                                        <option key={c.slug} value={c.slug}>{c.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="col-md-2">
+                                <label className="form-label small fw-semibold mb-1">Type</label>
+                                <select
+                                    className="form-select form-select-sm"
+                                    value={filterType}
+                                    onChange={e => setFilterType(e.target.value)}
+                                >
+                                    <option value="">All Types</option>
+                                    {INPUT_TYPES.map(t => (
+                                        <option key={t.value} value={t.value}>{t.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="col-md-2">
+                                <label className="form-label small fw-semibold mb-1">Visibility</label>
+                                <select
+                                    className="form-select form-select-sm"
+                                    value={filterConditional}
+                                    onChange={e => setFilterConditional(e.target.value)}
+                                >
+                                    <option value="">All</option>
+                                    <option value="no">Default (always shown)</option>
+                                    <option value="yes">Conditional only</option>
+                                </select>
+                            </div>
+                            <div className="col-md-1 d-flex align-items-end">
+                                <button
+                                    className="btn btn-sm btn-outline-secondary w-100"
+                                    onClick={clearFilters}
+                                    disabled={!hasActiveFilters}
+                                    title="Clear filters"
+                                >
+                                    <CIcon icon={cilX} />
+                                </button>
+                            </div>
+                        </div>
+                        {hasActiveFilters && (
+                            <div className="mt-2 small text-muted">
+                                Showing <strong>{filteredQuestions.length}</strong> of {questions.length} questions
+                            </div>
+                        )}
+                    </div>
                     {loading ? (
                         <div className="d-flex justify-content-center py-5">
                             <div className="spinner-border spinner-border-sm text-primary me-2" />
@@ -356,8 +548,14 @@ export default function SellQuestions() {
                         </div>
                     ) : questions.length === 0 ? (
                         <div className="text-center text-muted py-5">
-                            <div className="fs-3 mb-2">—</div>
+                            <div className="fs-3 mb-2">â€”</div>
                             <div className="small">No questions yet. Add one above.</div>
+                        </div>
+                    ) : filteredQuestions.length === 0 ? (
+                        <div className="text-center text-muted py-5">
+                            <div className="fs-3 mb-2">—</div>
+                            <div className="small">No questions match your filters.</div>
+                            <button className="btn btn-sm btn-outline-secondary mt-2" onClick={clearFilters}>Clear Filters</button>
                         </div>
                     ) : (
                         <div className="table-responsive">
@@ -373,269 +571,403 @@ export default function SellQuestions() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {questions.map((q) => (
-                                        <React.Fragment key={q.id}>
-                                            {/* Inline edit row */}
-                                            {editingId === q.id ? (
-                                                <tr className="table-warning">
-                                                    <td>
-                                                        <input type="number" className="form-control form-control-sm" style={{ width: 55 }}
-                                                            value={editData.sort_index} min="1"
-                                                            onChange={e => setEditData({ ...editData, sort_index: e.target.value })} />
-                                                    </td>
-                                                    <td>
-                                                        <input type="text" className="form-control form-control-sm mb-1"
-                                                            value={editData.text}
-                                                            onChange={e => setEditData({ ...editData, text: e.target.value })} />
-                                                        <input type="text" className="form-control form-control-sm"
-                                                            placeholder="Description (optional)"
-                                                            value={editData.description}
-                                                            onChange={e => setEditData({ ...editData, description: e.target.value })} />
-                                                    </td>
-                                                    <td>
-                                                        <select className="form-select form-select-sm"
-                                                            value={editData.input_type}
-                                                            onChange={e => setEditData({ ...editData, input_type: e.target.value })}>
-                                                            {INPUT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                                                        </select>
-                                                    </td>
-                                                    <td colSpan="2"></td>
-                                                    <td>
-                                                        <div className="d-flex gap-1">
-                                                            <button className="btn btn-sm btn-success" onClick={handleUpdateQuestion} disabled={saving || !editData.text}>
-                                                                <CIcon icon={cilCheck} />
-                                                            </button>
-                                                            <button className="btn btn-sm btn-outline-secondary" onClick={() => setEditingId(null)}>
-                                                                <CIcon icon={cilX} />
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ) : (
-                                                <tr className={expandedId === q.id ? "table-active" : ""}>
-                                                    <td className="text-center">
-                                                        <span className="badge bg-light text-dark border">{q.sort_index}</span>
-                                                    </td>
-                                                    <td className="text-start">
-                                                        <div className="fw-semibold">{q.text}</div>
-                                                        {q.description && <small className="text-muted">{q.description}</small>}
-                                                    </td>
-                                                    <td>{inputTypeBadge(q.input_type)}</td>
-                                                    <td>
-                                                        <span className="badge bg-secondary rounded-pill">{(q.options || []).length}</span>
-                                                    </td>
-                                                    <td>
-                                                        <div className="d-flex flex-wrap gap-1">
-                                                            {(q.categories || []).map(c => (
-                                                                <span key={c.id} className="badge bg-light text-dark border">{c.name}</span>
-                                                            ))}
-                                                            {(!q.categories || q.categories.length === 0) && (
-                                                                <span className="text-muted small">None</span>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td>
-                                                        <div className="d-flex gap-1">
-                                                            <button
-                                                                className="btn btn-sm btn-outline-warning"
-                                                                onClick={() => startEditing(q)}
-                                                                title="Edit question"
-                                                            >
-                                                                <CIcon icon={cilPencil} />
-                                                            </button>
-                                                            <button
-                                                                className={`btn btn-sm ${expandedId === q.id ? 'btn-primary' : 'btn-outline-info'}`}
-                                                                onClick={() => toggleExpand(q)}
-                                                                title="Manage Options & Conditions"
-                                                            >
-                                                                <CIcon icon={cilChevronRight} />
-                                                            </button>
-                                                            <button
-                                                                className="btn btn-sm btn-outline-danger"
-                                                                onClick={() => handleDeleteQuestion(q.id)}
-                                                                title="Deactivate"
-                                                            >
-                                                                <CIcon icon={cilTrash} />
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            )}
+                                    {filteredQuestions.map((q) => {
+                                        const qId = String(q.id);
+                                        const isConditional = conditionalQIds.has(qId);
+                                        const triggeredBy = isConditional ? getTriggeredBy(qId) : [];
+                                        const isExpanded = expandedId === qId;
+                                        const isEditing = editingId === qId;
 
-                                            {/* Expanded: Options, Conditions, Category Mapping */}
-                                            {expandedId === q.id && (
-                                                <tr key={`exp-${q.id}`}>
-                                                    <td colSpan="6" className="bg-light p-3">
-                                                        <div className="row g-3">
-                                                            {/* Options */}
-                                                            <div className="col-md-5">
-                                                                <h6 className="fw-bold mb-2">
-                                                                    Options
-                                                                    {q.input_type === "yes_no" && (
-                                                                        <span className="ms-2 badge bg-secondary fw-normal" style={{ fontSize: "0.7rem" }}>Fixed: Yes / No</span>
-                                                                    )}
-                                                                </h6>
-                                                                {(q.options || []).length > 0 && (
-                                                                    <table className="table table-sm table-bordered mb-2">
-                                                                        <thead className="table-light">
-                                                                            <tr>
-                                                                                <th style={{ width: 40 }}>#</th>
-                                                                                <th>Text</th>
-                                                                                <th>Deduction (₹)</th>
-                                                                                {q.input_type !== "yes_no" && <th></th>}
-                                                                            </tr>
-                                                                        </thead>
-                                                                        <tbody>
-                                                                            {q.options.map(o => (
-                                                                                <tr key={o.id}>
-                                                                                    <td className="text-muted small text-center">{o.sort_index}</td>
-                                                                                    <td>{o.text}</td>
-                                                                                    <td className="text-danger">-₹{Number(o.price_deduction).toLocaleString()}</td>
-                                                                                    {q.input_type !== "yes_no" && (
-                                                                                        <td>
-                                                                                            <button className="btn btn-sm btn-outline-danger p-0 px-1" onClick={() => handleDeleteOption(o.id)}>
-                                                                                                <CIcon icon={cilTrash} style={{ width: 14, height: 14 }} />
-                                                                                            </button>
-                                                                                        </td>
-                                                                                    )}
-                                                                                </tr>
-                                                                            ))}
-                                                                        </tbody>
-                                                                    </table>
+                                        return (
+                                            <React.Fragment key={qId}>
+                                                {/* â”€â”€ Inline edit row â”€â”€ */}
+                                                {isEditing ? (
+                                                    <tr className="table-warning">
+                                                        <td>
+                                                            <input
+                                                                type="number" className="form-control form-control-sm" style={{ width: 55 }}
+                                                                value={editData.sort_index} min="1"
+                                                                onChange={e => setEditData(p => ({ ...p, sort_index: e.target.value }))}
+                                                            />
+                                                        </td>
+                                                        <td>
+                                                            <input
+                                                                type="text" className="form-control form-control-sm mb-1"
+                                                                value={editData.text}
+                                                                onChange={e => setEditData(p => ({ ...p, text: e.target.value }))}
+                                                            />
+                                                            <input
+                                                                type="text" className="form-control form-control-sm"
+                                                                placeholder="Description (optional)"
+                                                                value={editData.description}
+                                                                onChange={e => setEditData(p => ({ ...p, description: e.target.value }))}
+                                                            />
+                                                        </td>
+                                                        <td>
+                                                            <select
+                                                                className="form-select form-select-sm"
+                                                                value={editData.input_type}
+                                                                onChange={e => setEditData(p => ({ ...p, input_type: e.target.value }))}
+                                                            >
+                                                                {INPUT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                                            </select>
+                                                        </td>
+                                                        <td colSpan="2" />
+                                                        <td>
+                                                            <div className="d-flex gap-1">
+                                                                <button
+                                                                    className="btn btn-sm btn-success"
+                                                                    onClick={handleUpdateQuestion}
+                                                                    disabled={saving || !editData.text?.trim()}
+                                                                >
+                                                                    <CIcon icon={cilCheck} />
+                                                                </button>
+                                                                <button className="btn btn-sm btn-outline-secondary" onClick={() => setEditingId(null)}>
+                                                                    <CIcon icon={cilX} />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    /* â”€â”€ Normal row â”€â”€ */
+                                                    <tr className={isExpanded ? "table-active" : isConditional ? "table-light" : ""}>
+                                                        <td className="text-center">
+                                                            <span className="badge bg-light text-dark border">{q.sort_index}</span>
+                                                        </td>
+                                                        <td className="text-start">
+                                                            <div className="d-flex align-items-center gap-2 flex-wrap">
+                                                                <span className="fw-semibold">{q.text}</span>
+                                                                {isConditional && (
+                                                                    <span
+                                                                        className="badge bg-secondary fw-normal"
+                                                                        style={{ fontSize: "0.68rem" }}
+                                                                        title="This question is shown conditionally â€” only when a specific option is selected"
+                                                                    >
+                                                                        conditional
+                                                                    </span>
                                                                 )}
-                                                                {q.input_type === "yes_no" ? (
-                                                                    <p className="text-muted small mb-0">Yes / No options are auto-managed by the system.</p>
-                                                                ) : (
-                                                                    <div className="d-flex gap-2">
-                                                                        <input
-                                                                            type="text" className="form-control form-control-sm"
-                                                                            placeholder="Option text"
-                                                                            value={newOpt.text}
-                                                                            onChange={e => setNewOpt({ ...newOpt, text: e.target.value })}
-                                                                        />
-                                                                        <input
-                                                                            type="number" className="form-control form-control-sm" style={{ maxWidth: 90 }}
-                                                                            placeholder="₹ Deduct"
-                                                                            value={newOpt.price_deduction}
-                                                                            onChange={e => setNewOpt({ ...newOpt, price_deduction: e.target.value })}
-                                                                        />
+                                                            </div>
+                                                            {q.description && <small className="text-muted d-block">{q.description}</small>}
+                                                            {/* Triggered-by hint */}
+                                                            {isConditional && triggeredBy.length > 0 && (
+                                                                <div className="mt-1 d-flex flex-wrap gap-1">
+                                                                    {triggeredBy.map((t, i) => (
+                                                                        <small key={i} className="text-muted">
+                                                                            <span className="badge bg-light text-secondary border" style={{ fontSize: "0.65rem" }}>
+                                                                                Q#{t.fromQuestion.sort_index} &rsaquo; {t.option.text}
+                                                                            </span>
+                                                                        </small>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td>{inputTypeBadge(q.input_type)}</td>
+                                                        <td>
+                                                            <span className="badge bg-secondary rounded-pill">
+                                                                {(q.options ?? []).length}
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            <div className="d-flex flex-wrap gap-1">
+                                                                {(q.categories ?? []).length > 0
+                                                                    ? (q.categories).map(c => (
+                                                                        <span key={c.id ?? c.slug} className="badge bg-light text-dark border">
+                                                                            {c.name}
+                                                                        </span>
+                                                                    ))
+                                                                    : <span className="text-muted small">None</span>
+                                                                }
+                                                            </div>
+                                                        </td>
+                                                        <td>
+                                                            <div className="d-flex gap-1">
+                                                                <button
+                                                                    className="btn btn-sm btn-outline-warning"
+                                                                    onClick={() => startEditing(q)}
+                                                                    title="Edit question"
+                                                                >
+                                                                    <CIcon icon={cilPencil} />
+                                                                </button>
+                                                                <button
+                                                                    className={`btn btn-sm ${isExpanded ? "btn-primary" : "btn-outline-info"}`}
+                                                                    onClick={() => toggleExpand(q)}
+                                                                    title="Manage Options & Conditions"
+                                                                >
+                                                                    <CIcon icon={cilChevronRight} />
+                                                                </button>
+                                                                <button
+                                                                    className="btn btn-sm btn-outline-danger"
+                                                                    onClick={() => handleDeleteQuestion(qId)}
+                                                                    title="Deactivate"
+                                                                >
+                                                                    <CIcon icon={cilTrash} />
+                                                                </button>
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                )}
+
+                                                {/* â”€â”€ Expanded panel â”€â”€ */}
+                                                {isExpanded && (
+                                                    <tr>
+                                                        <td colSpan="6" className="bg-light p-3">
+                                                            <div className="row g-3">
+
+                                                                {/* Options */}
+                                                                <div className="col-md-5">
+                                                                    <h6 className="fw-bold mb-2">
+                                                                        Options
+                                                                        {q.input_type === "yes_no" && (
+                                                                            <span className="ms-2 badge bg-secondary fw-normal" style={{ fontSize: "0.7rem" }}>
+                                                                                Fixed: Yes / No
+                                                                            </span>
+                                                                        )}
+                                                                    </h6>
+                                                                    {(() => {
+                                                                        const opts = getEffectiveOptions(q);
+                                                                        if (opts.length === 0) return (
+                                                                            <p className="text-muted small mb-2">No options yet.</p>
+                                                                        );
+                                                                        return (
+                                                                            <table className="table table-sm table-bordered mb-2">
+                                                                                <thead className="table-light">
+                                                                                    <tr>
+                                                                                        <th style={{ width: 30 }}>#</th>
+                                                                                        <th>Text</th>
+                                                                                        <th>Deduction (&#8377;)</th>
+                                                                                        <th>Shows</th>
+                                                                                        {q.input_type !== "yes_no" && <th />}
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody>
+                                                                                    {opts.map((o, idx) => {
+                                                                                        // Which questions does this option trigger?
+                                                                                        const showsQs = (o.show ?? []).map(sid =>
+                                                                                            questions.find(oq => String(oq.id) === String(sid))
+                                                                                        ).filter(Boolean);
+                                                                                        return (
+                                                                                            <tr key={o.id ?? `syn-${idx}`} className={o._synthetic ? "table-secondary" : ""}>
+                                                                                                <td className="text-muted small text-center">{o.sort_index}</td>
+                                                                                                <td>
+                                                                                                    {o.text}
+                                                                                                    {o._synthetic && (
+                                                                                                        <span className="ms-1 text-muted" style={{ fontSize: "0.7rem" }}>(auto)</span>
+                                                                                                    )}
+                                                                                                </td>
+                                                                                                <td className="text-danger">
+                                                                                                    &#8377; {o.price_deduction > 0 ? `${Number(o.price_deduction).toLocaleString()}` : "0"}
+                                                                                                </td>
+                                                                                                <td>
+                                                                                                    {showsQs.length > 0
+                                                                                                        ? showsQs.map(sq => (
+                                                                                                            <span key={sq.id} className="badge bg-warning text-dark me-1" style={{ fontSize: "0.65rem" }}>
+                                                                                                                Q#{sq.sort_index}
+                                                                                                            </span>
+                                                                                                        ))
+                                                                                                        : <span className="text-muted small">None</span>
+                                                                                                    }
+                                                                                                </td>
+                                                                                                {q.input_type !== "yes_no" && (
+                                                                                                    <td>
+                                                                                                        <button
+                                                                                                            className="btn btn-sm btn-outline-danger p-0 px-1"
+                                                                                                            onClick={() => handleDeleteOption(o.id)}
+                                                                                                            disabled={!o.id}
+                                                                                                        >
+                                                                                                            <CIcon icon={cilTrash} style={{ width: 14, height: 14 }} />
+                                                                                                        </button>
+                                                                                                    </td>
+                                                                                                )}
+                                                                                            </tr>
+                                                                                        );
+                                                                                    })}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        );
+                                                                    })()}
+                                                                    {q.input_type === "yes_no" ? (
+                                                                        <p className="text-muted small mb-0">
+                                                                            Yes / No options are system-managed and readonly â€” use them to wire conditions below.
+                                                                        </p>
+                                                                    ) : (
+                                                                        <div className="d-flex gap-2">
+                                                                            <input
+                                                                                type="text" className="form-control form-control-sm"
+                                                                                placeholder="Option text"
+                                                                                value={newOpt.text}
+                                                                                onChange={e => setNewOpt(p => ({ ...p, text: e.target.value }))}
+                                                                            />
+                                                                            <input
+                                                                                type="number" className="form-control form-control-sm" style={{ maxWidth: 90 }}
+                                                                                placeholder="â‚¹ Deduct"
+                                                                                value={newOpt.price_deduction}
+                                                                                onChange={e => setNewOpt(p => ({ ...p, price_deduction: e.target.value }))}
+                                                                            />
+                                                                            <button
+                                                                                className="btn btn-sm btn-success"
+                                                                                onClick={() => handleAddOption(qId)}
+                                                                                disabled={savingOpt || !newOpt.text?.trim()}
+                                                                            >
+                                                                                <CIcon icon={cilPlus} />
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* Conditions */}
+                                                                <div className="col-md-4">
+                                                                    <h6 className="fw-bold mb-2">Conditions</h6>
+                                                                    <small className="text-muted d-block mb-2">
+                                                                        When an option is selected, show a question that comes <strong>after</strong> this one.
+                                                                    </small>
+
+                                                                    {/* Outgoing conditions derived from options[].show */}
+                                                                    {loadingConds ? (
+                                                                        <div className="text-muted small mb-2">Loading...</div>
+                                                                    ) : (() => {
+                                                                        const outgoing = getOutgoingConditions(q);
+                                                                        if (outgoing.length === 0) return (
+                                                                            <p className="text-muted small mb-2">No conditions yet.</p>
+                                                                        );
+                                                                        return outgoing.map(({ option: o, shownQuestion: sq }, i) => {
+                                                                            // Find condition ID from fetched conditions for deletion
+                                                                            const cond = conditions.find(c =>
+                                                                                String(c.trigger_option_id) === String(o.id) &&
+                                                                                String(c.show_question_id) === String(sq.id)
+                                                                            ) ?? conditions.find(c =>
+                                                                                c.trigger_option_text === o.text &&
+                                                                                c.show_question_text === sq.text
+                                                                            );
+                                                                            return (
+                                                                                <div key={i} className="d-flex align-items-center gap-1 mb-1 small">
+                                                                                    <span className="badge bg-info text-dark">{o.text}</span>
+                                                                                    <CIcon icon={cilArrowRight} style={{ width: 12 }} />
+                                                                                    <span className="badge bg-warning text-dark">
+                                                                                        Q#{sq.sort_index} {sq.text}
+                                                                                    </span>
+                                                                                    {cond?.id && (
+                                                                                        <button
+                                                                                            className="btn btn-sm p-0 px-1 btn-outline-danger ms-auto"
+                                                                                            onClick={() => handleDeleteCondition(cond.id)}
+                                                                                            title="Remove condition"
+                                                                                        >
+                                                                                            <CIcon icon={cilX} style={{ width: 12, height: 12 }} />
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        });
+                                                                    })()}
+
+                                                                    {/* Add condition form */}
+                                                                    <div className="d-flex gap-1 mt-2">
+                                                                        <select
+                                                                            className="form-select form-select-sm"
+                                                                            value={newCond.trigger_option_id}
+                                                                            onChange={e => setNewCond(p => ({ ...p, trigger_option_id: e.target.value }))}
+                                                                        >
+                                                                            <option value="">If option...</option>
+                                                                            {getEffectiveOptions(q).map((o, idx) => (
+                                                                                <option
+                                                                                    key={o.id ?? `syn-${idx}`}
+                                                                                    value={o.id ?? ""}
+                                                                                    disabled={!o.id}
+                                                                                >
+                                                                                    {o.text}{o._synthetic ? " (pendingâ€¦)" : ""}
+                                                                                </option>
+                                                                            ))}
+                                                                        </select>
+                                                                        <select
+                                                                            className="form-select form-select-sm"
+                                                                            value={newCond.show_question_id}
+                                                                            onChange={e => setNewCond(p => ({ ...p, show_question_id: e.target.value }))}
+                                                                        >
+                                                                            <option value="">Then show...</option>
+                                                                            {questions
+                                                                                .filter(oq => String(oq.id) !== qId && (oq.sort_index ?? 0) > (q.sort_index ?? 0))
+                                                                                .map(oq => (
+                                                                                    <option key={oq.id} value={oq.id}>
+                                                                                        [#{oq.sort_index}] {oq.text}
+                                                                                    </option>
+                                                                                ))
+                                                                            }
+                                                                        </select>
                                                                         <button
                                                                             className="btn btn-sm btn-success"
-                                                                            onClick={() => handleAddOption(q.id)}
-                                                                            disabled={savingOpt || !newOpt.text}
+                                                                            onClick={handleAddCondition}
+                                                                            disabled={!newCond.trigger_option_id || !newCond.show_question_id}
+                                                                        >
+                                                                            <CIcon icon={cilLink} />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Category Mapping */}
+                                                                <div className="col-md-3">
+                                                                    <h6 className="fw-bold mb-2">Categories</h6>
+                                                                    <div className="d-flex flex-wrap gap-1 mb-2">
+                                                                        {(q.categories ?? []).length > 0
+                                                                            ? (q.categories).map(c => (
+                                                                                <span key={c.id ?? c.slug} className="badge bg-primary d-flex align-items-center gap-1">
+                                                                                    {c.name}
+                                                                                    <button
+                                                                                        className="btn-close btn-close-white p-0 ms-1"
+                                                                                        style={{ fontSize: "0.5rem" }}
+                                                                                        onClick={() => handleUnmapCategory(c.id, qId)}
+                                                                                    />
+                                                                                </span>
+                                                                            ))
+                                                                            : <span className="text-muted small">No categories mapped.</span>
+                                                                        }
+                                                                    </div>
+                                                                    <div className="d-flex gap-1">
+                                                                        <select
+                                                                            className="form-select form-select-sm"
+                                                                            value={mapCatSlug}
+                                                                            onChange={e => setMapCatSlug(e.target.value)}
+                                                                        >
+                                                                            <option value="">Add category...</option>
+                                                                            {categories
+                                                                                .filter(c => !(q.categories ?? []).find(qc => qc.id === c.id || qc.slug === c.slug))
+                                                                                .map(c => (
+                                                                                    <option key={c.slug} value={c.slug}>{c.name}</option>
+                                                                                ))
+                                                                            }
+                                                                        </select>
+                                                                        <button
+                                                                            className="btn btn-sm btn-success"
+                                                                            onClick={() => handleMapCategory(qId)}
+                                                                            disabled={!mapCatSlug}
                                                                         >
                                                                             <CIcon icon={cilPlus} />
                                                                         </button>
                                                                     </div>
-                                                                )}
-                                                            </div>
-
-                                                            {/* Conditions */}
-                                                            <div className="col-md-4">
-                                                                <h6 className="fw-bold mb-2">Conditions</h6>
-                                                                <small className="text-muted d-block mb-2">When an option is selected, show a question that comes <strong>after</strong> this one</small>
-                                                                {loadingConds ? (
-                                                                    <div className="text-muted small">Loading...</div>
-                                                                ) : (
-                                                                    <>
-                                                                        {conditions.map(c => (
-                                                                            <div key={c.id} className="d-flex align-items-center gap-1 mb-1 small">
-                                                                                <span className="badge bg-info">{c.trigger_option_text}</span>
-                                                                                <CIcon icon={cilArrowRight} style={{ width: 12 }} />
-                                                                                <span className="badge bg-warning text-dark">{c.show_question_text}</span>
-                                                                                <button className="btn btn-sm p-0 px-1 btn-outline-danger ms-auto" onClick={() => handleDeleteCondition(c.id)}>
-                                                                                    <CIcon icon={cilX} style={{ width: 12, height: 12 }} />
-                                                                                </button>
-                                                                            </div>
-                                                                        ))}
-                                                                        <div className="d-flex gap-1 mt-2">
-                                                                            <select
-                                                                                className="form-select form-select-sm"
-                                                                                value={newCond.trigger_option_id}
-                                                                                onChange={e => setNewCond({ ...newCond, trigger_option_id: e.target.value })}
-                                                                            >
-                                                                                <option value="">If option...</option>
-                                                                                {(q.options || []).map(o => (
-                                                                                    <option key={o.id} value={o.id}>{o.text}</option>
-                                                                                ))}
-                                                                            </select>
-                                                                            <select
-                                                                                className="form-select form-select-sm"
-                                                                                value={newCond.show_question_id}
-                                                                                onChange={e => setNewCond({ ...newCond, show_question_id: e.target.value })}
-                                                                            >
-                                                                                <option value="">Then show...</option>
-                                                                                {questions
-                                                                                    .filter(oq => oq.sort_index > q.sort_index)
-                                                                                    .map(oq => (
-                                                                                        <option key={oq.id} value={oq.id}>[#{oq.sort_index}] {oq.text}</option>
-                                                                                    ))
-                                                                                }
-                                                                            </select>
-                                                                            <button
-                                                                                className="btn btn-sm btn-success"
-                                                                                onClick={handleAddCondition}
-                                                                                disabled={!newCond.trigger_option_id || !newCond.show_question_id}
-                                                                            >
-                                                                                <CIcon icon={cilLink} />
-                                                                            </button>
-                                                                        </div>
-                                                                    </>
-                                                                )}
-                                                            </div>
-
-                                                            {/* Category Mapping */}
-                                                            <div className="col-md-3">
-                                                                <h6 className="fw-bold mb-2">Categories</h6>
-                                                                <div className="d-flex flex-wrap gap-1 mb-2">
-                                                                    {(q.categories || []).map(c => (
-                                                                        <span key={c.id} className="badge bg-primary d-flex align-items-center gap-1">
-                                                                            {c.name}
-                                                                            <button
-                                                                                className="btn-close btn-close-white p-0 ms-1"
-                                                                                style={{ fontSize: "0.5rem" }}
-                                                                                onClick={() => handleUnmapCategory(c.id, q.id)}
-                                                                            />
-                                                                        </span>
-                                                                    ))}
                                                                 </div>
-                                                                <div className="d-flex gap-1">
-                                                                    <select
-                                                                        className="form-select form-select-sm"
-                                                                        value={mapCatSlug}
-                                                                        onChange={e => setMapCatSlug(e.target.value)}
-                                                                    >
-                                                                        <option value="">Add category...</option>
-                                                                        {categories
-                                                                            .filter(c => !(q.categories || []).find(qc => qc.id === c.id))
-                                                                            .map(c => <option key={c.slug} value={c.slug}>{c.name}</option>)
-                                                                        }
-                                                                    </select>
-                                                                    <button
-                                                                        className="btn btn-sm btn-success"
-                                                                        onClick={() => handleMapCategory(q.id)}
-                                                                        disabled={!mapCatSlug}
-                                                                    >
-                                                                        <CIcon icon={cilPlus} />
-                                                                    </button>
-                                                                </div>
+
                                                             </div>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </React.Fragment>
-                                    ))}
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </React.Fragment>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
                     )}
 
-                    <div className="text-muted small mt-2">
-                        Total: {questions.length} questions
+                    <div className="text-muted small mt-2 d-flex gap-3 flex-wrap">
+                        <span>Total: <strong>{questions.length}</strong> question{questions.length !== 1 ? "s" : ""}</span>
+                        {conditionalQIds.size > 0 && (
+                            <span>{conditionalQIds.size} conditional</span>
+                        )}
+                        {hasActiveFilters && (
+                            <span className="text-primary">Filtered: {filteredQuestions.length} shown</span>
+                        )}
                     </div>
                 </div>
             </div>
         </div>
     );
 }
+
