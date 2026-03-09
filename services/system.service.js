@@ -283,7 +283,7 @@ exports.createSeries = async ({ name, brand_slug }) => {
 exports.getModels = async ({ cat_slug, brand_slug, series_slug }) => {
     // const { cat_slug, brand_slug, series_slug } = params
     if (!cat_slug || !brand_slug || !series_slug) throw { status: 404, message: "Series, Category & Brand are required" };
-   
+    
     const data = await pool.query(`
         SELECT m.name, m.slug, img.url FROM models m
         JOIN categories c ON m.category_id=c.id
