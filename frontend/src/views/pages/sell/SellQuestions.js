@@ -83,9 +83,7 @@ export default function SellQuestions() {
     const [newOpt, setNewOpt] = useState({ text: "", price_deduction: 0 });
     const [savingOpt, setSavingOpt] = useState(false);
 
-    // Conditions fetched from API for the currently expanded question (gives us IDs for deletion)
-    const [conditions, setConditions] = useState([]);
-    const [loadingConds, setLoadingConds] = useState(false);
+    // Condition add form
     const [newCond, setNewCond] = useState({ trigger_option_id: "", show_question_id: "" });
 
     // Category mapping
@@ -117,6 +115,38 @@ export default function SellQuestions() {
         });
         return ids;
     }, [questions]);
+
+    /** Whether any filter is currently active */
+    const hasActiveFilters = filterText !== "" || filterCategory !== "" || filterType !== "" || filterConditional !== "";
+
+    /** Filtered questions based on current filter state */
+    const filteredQuestions = useMemo(() => {
+        return questions.filter(q => {
+            if (filterText) {
+                const t = filterText.toLowerCase();
+                if (
+                    !q.text?.toLowerCase().includes(t) &&
+                    !q.description?.toLowerCase().includes(t)
+                ) return false;
+            }
+            if (filterCategory) {
+                const matchedCat = categories.find(c => c.slug === filterCategory);
+                if (matchedCat && !(q.categories ?? []).some(qc => qc.id === matchedCat.id)) return false;
+            }
+            if (filterType && q.input_type !== filterType) return false;
+            if (filterConditional === "yes" && !conditionalQIds.has(String(q.id))) return false;
+            if (filterConditional === "no" && conditionalQIds.has(String(q.id))) return false;
+            return true;
+        });
+    }, [questions, filterText, filterCategory, filterType, filterConditional, conditionalQIds, categories]);
+
+    /** Reset all filters */
+    const clearFilters = () => {
+        setFilterText("");
+        setFilterCategory("");
+        setFilterType("");
+        setFilterConditional("");
+    };
 
     /**
      * For a given question, find which options (from other questions) trigger its appearance.
@@ -174,21 +204,6 @@ export default function SellQuestions() {
             console.error(e);
         }
     };
-
-    const fetchConditions = async (questionId) => {
-        if (!questionId) return;
-        try {
-            setLoadingConds(true);
-            const res = await get_question_conditions(questionId);
-            setConditions(Array.isArray(res.data) ? res.data : []);
-        } catch {
-            setConditions([]);
-        } finally {
-            setLoadingConds(false);
-        }
-    };
-
-    // â”€â”€ Question CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     const buildQuestionPayload = (data, sortIndex) => ({
         text: (data.text ?? "").trim(),
@@ -254,7 +269,7 @@ export default function SellQuestions() {
         if (!confirm("Deactivate this question?")) return;
         try {
             await delete_sell_question(id);
-            if (expandedId === id) { setExpandedId(null); setConditions([]); }
+            if (expandedId === id) { setExpandedId(null); }
             fetchQuestions();
         } catch (e) {
             console.error(e?.response?.data?.message || "Failed to delete question");
@@ -265,13 +280,11 @@ export default function SellQuestions() {
         const qId = String(q.id);
         if (expandedId === qId) {
             setExpandedId(null);
-            setConditions([]);
         } else {
             setExpandedId(qId);
             setEditingId(null);
             setNewOpt({ text: "", price_deduction: 0 });
             setNewCond({ trigger_option_id: "", show_question_id: "" });
-            fetchConditions(qId);
         }
     };
 
@@ -291,7 +304,6 @@ export default function SellQuestions() {
             });
             setNewOpt({ text: "", price_deduction: 0 });
             fetchQuestions();
-            fetchConditions(questionId);
         } catch (e) {
             console.error(e?.response?.data?.message || "Failed to add option");
         } finally {
@@ -305,7 +317,6 @@ export default function SellQuestions() {
         try {
             await delete_question_option(optId);
             fetchQuestions();
-            if (expandedId) fetchConditions(expandedId);
         } catch (e) {
             console.error(e?.response?.data?.message || "Failed to delete option");
         }
@@ -321,19 +332,24 @@ export default function SellQuestions() {
                 show_question_id: parseInt(newCond.show_question_id),
             });
             setNewCond({ trigger_option_id: "", show_question_id: "" });
-            fetchConditions(expandedId);
             fetchQuestions(); // refresh show[] arrays
         } catch (e) {
             console.error(e?.response?.data?.message || "Failed to add condition");
         }
     };
 
-    const handleDeleteCondition = async (condId) => {
-        if (!condId) return;
+    const handleDeleteCondition = async (triggerOptionId, showQuestionId) => {
+        if (!triggerOptionId || !showQuestionId || !expandedId) return;
         try {
-            await delete_question_condition(condId);
-            fetchConditions(expandedId);
-            fetchQuestions();
+            // Fetch condition ID on demand (no need to pre-load conditions)
+            const res = await get_question_conditions(expandedId);
+            const cond = (Array.isArray(res.data) ? res.data : []).find(c =>
+                String(c.trigger_option_id) === String(triggerOptionId) &&
+                String(c.show_question_id) === String(showQuestionId)
+            );
+            if (!cond?.id) return;
+            await delete_question_condition(cond.id);
+            fetchQuestions(); // refresh show[] arrays
         } catch (e) {
             console.error(e?.response?.data?.message || "Failed to delete condition");
         }
@@ -822,41 +838,27 @@ export default function SellQuestions() {
                                                                     </small>
 
                                                                     {/* Outgoing conditions derived from options[].show */}
-                                                                    {loadingConds ? (
-                                                                        <div className="text-muted small mb-2">Loading...</div>
-                                                                    ) : (() => {
+                                                                    {(() => {
                                                                         const outgoing = getOutgoingConditions(q);
                                                                         if (outgoing.length === 0) return (
                                                                             <p className="text-muted small mb-2">No conditions yet.</p>
                                                                         );
-                                                                        return outgoing.map(({ option: o, shownQuestion: sq }, i) => {
-                                                                            // Find condition ID from fetched conditions for deletion
-                                                                            const cond = conditions.find(c =>
-                                                                                String(c.trigger_option_id) === String(o.id) &&
-                                                                                String(c.show_question_id) === String(sq.id)
-                                                                            ) ?? conditions.find(c =>
-                                                                                c.trigger_option_text === o.text &&
-                                                                                c.show_question_text === sq.text
-                                                                            );
-                                                                            return (
-                                                                                <div key={i} className="d-flex align-items-center gap-1 mb-1 small">
-                                                                                    <span className="badge bg-info text-dark">{o.text}</span>
-                                                                                    <CIcon icon={cilArrowRight} style={{ width: 12 }} />
-                                                                                    <span className="badge bg-warning text-dark">
-                                                                                        Q#{sq.sort_index} {sq.text}
-                                                                                    </span>
-                                                                                    {cond?.id && (
-                                                                                        <button
-                                                                                            className="btn btn-sm p-0 px-1 btn-outline-danger ms-auto"
-                                                                                            onClick={() => handleDeleteCondition(cond.id)}
-                                                                                            title="Remove condition"
-                                                                                        >
-                                                                                            <CIcon icon={cilX} style={{ width: 12, height: 12 }} />
-                                                                                        </button>
-                                                                                    )}
-                                                                                </div>
-                                                                            );
-                                                                        });
+                                                                        return outgoing.map(({ option: o, shownQuestion: sq }, i) => (
+                                                                            <div key={i} className="d-flex align-items-center gap-1 mb-1 small">
+                                                                                <span className="badge bg-info text-dark">{o.text}</span>
+                                                                                <CIcon icon={cilArrowRight} style={{ width: 12 }} />
+                                                                                <span className="badge bg-warning text-dark">
+                                                                                    Q#{sq.sort_index} {sq.text}
+                                                                                </span>
+                                                                                <button
+                                                                                    className="btn btn-sm p-0 px-1 btn-outline-danger ms-auto"
+                                                                                    onClick={() => handleDeleteCondition(o.id, sq.id)}
+                                                                                    title="Remove condition"
+                                                                                >
+                                                                                    <CIcon icon={cilX} style={{ width: 12, height: 12 }} />
+                                                                                </button>
+                                                                            </div>
+                                                                        ));
                                                                     })()}
 
                                                                     {/* Add condition form */}
