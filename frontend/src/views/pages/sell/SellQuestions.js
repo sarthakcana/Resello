@@ -100,7 +100,7 @@ export default function SellQuestions() {
         fetchCategories();
     }, []);
 
-    // â”€â”€ Derived data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  Derived data â”€
 
     /**
      * Set of question IDs that are referenced in at least one option's `show` array.
@@ -180,7 +180,7 @@ export default function SellQuestions() {
         return results;
     };
 
-    // â”€â”€ Fetch helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  Fetch helpers 
 
     const fetchQuestions = async () => {
         try {
@@ -288,7 +288,7 @@ export default function SellQuestions() {
         }
     };
 
-    // â”€â”€ Option CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  Option CRUD 
 
     const handleAddOption = async (questionId) => {
         if (!newOpt.text?.trim()) return;
@@ -296,10 +296,11 @@ export default function SellQuestions() {
             setSavingOpt(true);
             const question = questions.find(q => String(q.id) === String(questionId));
             const nextOptSort = (question?.options?.length ?? 0) + 1;
+            const deductionPct = Math.min(100, Math.max(0, parseFloat(newOpt.price_deduction) || 0));
             await create_question_option({
                 question_id: questionId,
                 text: newOpt.text.trim(),
-                price_deduction: parseFloat(newOpt.price_deduction) || 0,
+                price_deduction: deductionPct,
                 sort_index: nextOptSort,
             });
             setNewOpt({ text: "", price_deduction: 0 });
@@ -322,7 +323,7 @@ export default function SellQuestions() {
         }
     };
 
-    // â”€â”€ Condition CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  Condition CRUD â”€
 
     const handleAddCondition = async () => {
         if (!newCond.trigger_option_id || !newCond.show_question_id) return;
@@ -355,7 +356,6 @@ export default function SellQuestions() {
         }
     };
 
-    // â”€â”€ Category Mapping â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     const handleMapCategory = async (questionId) => {
         if (!mapCatSlug) return;
@@ -386,7 +386,7 @@ export default function SellQuestions() {
         }));
     };
 
-    // â”€â”€ Render helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
 
     const nextSortIndex = questions.length > 0
         ? Math.max(...questions.map(q => q.sort_index ?? 0)) + 1
@@ -415,7 +415,7 @@ export default function SellQuestions() {
 
                 <div className="card-body">
 
-                    {/* â”€â”€ Add Question Form â”€â”€ */}
+                    {/*  Add Question Form  */}
                     {showAdd && (
                         <div className="border rounded p-3 mb-4 bg-white shadow-sm">
                             <h6 className="fw-semibold mb-3">New Question</h6>
@@ -487,7 +487,7 @@ export default function SellQuestions() {
                         </div>
                     )}
 
-                    {/* â”€â”€ Questions List â”€â”€ */}
+                    {/*  Questions List  */}
 
                     {/* Filter Bar */}
                     <div className="border rounded p-2 mb-3 bg-light">
@@ -596,7 +596,7 @@ export default function SellQuestions() {
 
                                         return (
                                             <React.Fragment key={qId}>
-                                                {/* â”€â”€ Inline edit row â”€â”€ */}
+                                                {/*  Inline edit row  */}
                                                 {isEditing ? (
                                                     <tr className="table-warning">
                                                         <td>
@@ -645,7 +645,7 @@ export default function SellQuestions() {
                                                         </td>
                                                     </tr>
                                                 ) : (
-                                                    /* â”€â”€ Normal row â”€â”€ */
+                                                    /*  Normal row  */
                                                     <tr className={isExpanded ? "table-active" : isConditional ? "table-light" : ""}>
                                                         <td className="text-center">
                                                             <span className="badge bg-light text-dark border">{q.sort_index}</span>
@@ -723,7 +723,7 @@ export default function SellQuestions() {
                                                     </tr>
                                                 )}
 
-                                                {/* â”€â”€ Expanded panel â”€â”€ */}
+                                                {/*  Expanded panel  */}
                                                 {isExpanded && (
                                                     <tr>
                                                         <td colSpan="6" className="bg-light p-3">
@@ -750,7 +750,7 @@ export default function SellQuestions() {
                                                                                     <tr>
                                                                                         <th style={{ width: 30 }}>#</th>
                                                                                         <th>Text</th>
-                                                                                        <th>Deduction (&#8377;)</th>
+                                                                                        <th>Deduction (&#37;)</th>
                                                                                         <th>Shows</th>
                                                                                         {q.input_type !== "yes_no" && <th />}
                                                                                     </tr>
@@ -771,7 +771,7 @@ export default function SellQuestions() {
                                                                                                     )}
                                                                                                 </td>
                                                                                                 <td className="text-danger">
-                                                                                                    &#8377; {o.price_deduction > 0 ? `${Number(o.price_deduction).toLocaleString()}` : "0"}
+                                                                                                    {o.price_deduction > 0 ? `${Number(o.price_deduction).toLocaleString()}` : "0"}&#37;
                                                                                                 </td>
                                                                                                 <td>
                                                                                                     {showsQs.length > 0
@@ -815,7 +815,8 @@ export default function SellQuestions() {
                                                                             />
                                                                             <input
                                                                                 type="number" className="form-control form-control-sm" style={{ maxWidth: 90 }}
-                                                                                placeholder="â‚¹ Deduct"
+                                                                                placeholder="% Deduct"
+                                                                                min="0" max="100" step="0.01"
                                                                                 value={newOpt.price_deduction}
                                                                                 onChange={e => setNewOpt(p => ({ ...p, price_deduction: e.target.value }))}
                                                                             />

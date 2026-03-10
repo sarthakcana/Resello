@@ -494,24 +494,25 @@ exports.calculateSellPrice = async (data) => {
     );
     if (configRes.rowCount === 0) throw { status: 404, message: "Config not found" };
 
-    let finalPrice = parseFloat(configRes.rows[0].base_price);
+    const basePrice = parseFloat(configRes.rows[0].base_price);
+    let finalPrice = basePrice;
 
-    // Sum up deductions from selected options
+    // Sum up percentage deductions from selected options (each % is of base_price)
     for (const ans of answers) {
         const optRes = await pool.query(
             `SELECT price_deduction FROM sell_question_options WHERE id=$1 AND question_id=$2`,
             [ans.option_id, ans.question_id]
         );
         if (optRes.rowCount > 0) {
-            finalPrice -= parseFloat(optRes.rows[0].price_deduction);
+            finalPrice -= (basePrice * parseFloat(optRes.rows[0].price_deduction) / 100);
         }
     }
 
     if (finalPrice < 0) finalPrice = 0;
 
     return {
-        base_price: parseFloat(configRes.rows[0].base_price),
-        total_deduction: parseFloat(configRes.rows[0].base_price) - finalPrice,
+        base_price: basePrice,
+        total_deduction: basePrice - finalPrice,
         quoted_price: finalPrice
     };
 };
@@ -547,13 +548,14 @@ exports.createSellListing = async (data) => {
         let base_price = parseFloat(configRes.rows[0].base_price);
         let quoted_price = base_price;
 
+        // Each price_deduction is a percentage of base_price
         for (const ans of answers) {
             const optRes = await client.query(
                 `SELECT price_deduction FROM sell_question_options WHERE id=$1 AND question_id=$2`,
                 [ans.option_id, ans.question_id]
             );
             if (optRes.rowCount > 0) {
-                quoted_price -= parseFloat(optRes.rows[0].price_deduction);
+                quoted_price -= (base_price * parseFloat(optRes.rows[0].price_deduction) / 100);
             }
         }
         if (quoted_price < 0) quoted_price = 0;

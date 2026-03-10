@@ -15,10 +15,20 @@ const Brands = React.lazy(() => import('./views/pages/system/Brands'));
 const Products = React.lazy(() => import('./views/pages/products/Products'));
 const AddProducts = React.lazy(() => import('./views/pages/products/AddProducts'));
 const BrandModelManager = React.lazy(() => import('./views/pages/system/BrandModelManager'));
+const SellQuestions = React.lazy(() => import('./views/pages/sell/SellQuestions'));
+// const AddHomeBanner = React.lazy(() => import('./views/pages/banners/AddHomeBanner'));
+// const HomeBanner = React.lazy(() => import('./views/pages/banners/HomeBanner'));
+
+// BANNERS
 const HomeBanner = React.lazy(() => import('./views/pages/banners/HomeBanner'));
 const AddHomeBanner = React.lazy(() => import('./views/pages/banners/AddHomeBanner'));
-const SellQuestions = React.lazy(() => import('./views/pages/sell/SellQuestions'));
-// const Series= ;
+const EditBanner = React.lazy(() => import('./views/pages/banners/EditBanner'));
+
+// FAQS  ⭐ ADDED
+const HomeFaqs = React.lazy(() => import('./views/pages/faqs/HomeFaq'));
+const AddFaq = React.lazy(() => import('./views/pages/faqs/AddFaq'));
+const EditFaq = React.lazy(() => import('./views/pages/faqs/EditFaq'));
+
 
 // Base
 // const Accordion = React.lazy(() => import('./views/base/accordion/Accordion'))
@@ -98,8 +108,15 @@ const routes = [
 
   { path: '/banners', name: 'Manage', element: HomeBanner },
   { path: '/banners/add', name: 'Add', element: AddHomeBanner },
+  { path: '/banners/edit/:id', name: 'Edit', element: EditBanner },
+
+  // FAQS ⭐
+  { path: '/faqs', name: 'Manage FAQs', element: HomeFaqs },
+  { path: '/faqs/add', name: 'Add FAQ', element: AddFaq },
+  { path: '/faqs/edit/:id', name: 'Edit FAQ', element: EditFaq },
 
 
+  
 
   { path: '/theme/typography', name: 'Typography', element: Typography },
   { path: '/base/breadcrumbs', name: 'Breadcrumbs', element: Breadcrumbs },

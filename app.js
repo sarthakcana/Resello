@@ -5,16 +5,15 @@ const cookieParser = require("cookie-parser");
 const morgan = require('morgan');
 const responseLogger = require('./config/response.logger')
 const fs = require("fs");
-// const authRoutes = require("./routes/auth.routes");
-// const productRoutes = require("./routes/product.routes")
-// const systemRoutes = require("./routes/system.routes");
-// const userRoutes = require("./routes/user.routes");
-// const uiRoutes = require("./routes/ui.routes");
-// const sellRoutes = require("./routes/sell.routes");
+
+
 const authMiddleware = require("./middlewares/auth.middleware");
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: ["http://localhost:5173", "http://localhost:3000"],
+  credentials: true
+}));
 // app.use(cors({
 //   origin: true,
 //   credentials: true
@@ -32,7 +31,10 @@ app.use("/product", require("./routes/product.routes"));
 app.use("/users", require("./routes/user.routes"));
 app.use("/system", require("./routes/system.routes"));
 app.use("/sell", require("./routes/sell.routes"));
-app.use("/ui", require("./routes/ui.routes"));
+
+// RAHUL WORK
+app.use("/banners", require("./routes/banner.routes"));
+app.use('/faqs', require('./routes/faq.routes'))
 
 // ERROR HANDLING
 const error_handler = require("./middlewares/error_handler.middleware")

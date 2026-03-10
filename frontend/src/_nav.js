@@ -177,11 +177,11 @@ const _nav = [
         name: 'Cancelled Orders',
         to: '/buttons/dropdowns',
       },
-      
+
     ]
   },
   {
-  component: CNavTitle,
+    component: CNavTitle,
     name: 'System Management',
   },
   {
@@ -195,6 +195,18 @@ const _nav = [
         to: '/banners',
       }
     ]
+  },
+  {
+    component: CNavGroup,
+    name: 'Faqs',
+    icon: <CIcon icon={cilStar} customClassName="nav-icon" />,
+    items: [
+      {
+        component: CNavItem,
+        name: 'Manage Faq',
+        to: '/faqs',
+      },
+    ],
   },
   {
     component: CNavItem,
