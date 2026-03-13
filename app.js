@@ -10,14 +10,7 @@ const fs = require("fs");
 const authMiddleware = require("./middlewares/auth.middleware");
 const app = express();
 
-app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "https://resello-sepia.vercel.app/"
-  ],
-  credentials: true
-}));
+app.use(cors());
 // app.use(cors({
 //   origin: true,
 //   credentials: true
