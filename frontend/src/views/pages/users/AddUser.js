@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { get_roles } from "src/api/system_service"
+import { useNavigate } from "react-router-dom";
+import { get_roles, create_user } from "src/api/system_service"
 
 import {
     CIcon
@@ -35,6 +36,7 @@ const initialAddress = {
 };
 
 export default function AddUser() {
+    const navigate = useNavigate();
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [toast, setToast] = useState(null); // { type, msg }
@@ -60,12 +62,12 @@ export default function AddUser() {
     // const [status, setStatus] = useState("active"); // active | suspended | deleted
 
     useEffect(() => {
-      loadRoles();
+        loadRoles();
     }, [])
-    
+
     const loadRoles = async () => {
-        const result=await get_roles();
-        if(result.status==200)  setRoles(result.data);
+        const result = await get_roles();
+        if (result.status == 200) setRoles(result.data);
     }
     // ── Address helpers ──────────────────────────────────────
     const addAddress = () => setAddresses([...addresses, { ...initialAddress }]);
@@ -132,17 +134,11 @@ export default function AddUser() {
 
         try {
             setLoading(true);
-            const res = await fetch("http://localhost:5500/users/create", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data?.message || "Failed to create user.");
+            await create_user(payload);
             showToast("success", "User created successfully!");
-            resetForm();
+            setTimeout(() => navigate('/users'), 1200);
         } catch (e) {
-            showToast("danger", e.message);
+            showToast("danger", e.response?.data?.message || e.message || "Failed to create user.");
         } finally {
             setLoading(false);
         }
@@ -153,7 +149,7 @@ export default function AddUser() {
         setEmail(""); setPhone(""); setPassword(""); setConfirmPassword(""); setIsVerified(false);
         setFirstName(""); setLastName(""); setAvatarUrl("");
         setAddresses([{ ...initialAddress }]);
-        setSelectedRoles([]); 
+        setSelectedRoles([]);
         // setStatus("active");
     };
 
@@ -590,19 +586,6 @@ export default function AddUser() {
                                     <div className="col-md-6">
                                         <span className="text-muted">Roles:</span>{" "}
                                         {selectedRoles.length > 0 ? selectedRoles.join(", ") : "None"}
-                                    </div>
-                                    <div className="col-md-6">
-                                        <span className="text-muted">Status:</span>{" "}
-                                        <span
-                                            className={`badge ${status === "active"
-                                                ? "bg-success"
-                                                : status === "suspended"
-                                                    ? "bg-warning text-dark"
-                                                    : "bg-danger"
-                                                }`}
-                                        >
-                                            {status}
-                                        </span>
                                     </div>
                                 </div>
                             </div>

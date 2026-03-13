@@ -306,6 +306,29 @@ BEGIN;
 		rate NUMERIC(5,2) NOT NULL DEFAULT 0,  -- 15% for all phones
 		PRIMARY KEY (category_id, option_id)
 	);
+
+	CREATE TABLE banners
+	(
+		id SERIAL PRIMARY KEY,
+		title VARCHAR(255) NOT NULL,
+		image_url TEXT NOT NULL,
+		redirect_url TEXT NOT NULL,
+		position VARCHAR(50),
+		is_active BOOLEAN DEFAULT true,
+		start_date TIMESTAMP WITHOUT TIME ZONE,
+		end_date TIMESTAMP WITHOUT TIME ZONE,
+		sort_order integer DEFAULT 0,
+		created_at TIMESTAMP DEFAULT NOW(),
+		updated_at TIMESTAMP DEFAULT NOW()
+	);
+	CREATE TABLE faqs (
+		id SERIAL PRIMARY KEY,
+		question TEXT NOT NULL,
+		answer TEXT NOT NULL,
+		is_active BOOLEAN DEFAULT TRUE,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);
 COMMIT;
 
 -- FOR LATER USE - override deductions brands/model wise

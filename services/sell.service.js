@@ -497,14 +497,14 @@ exports.calculateSellPrice = async (data) => {
     const basePrice = parseFloat(configRes.rows[0].base_price);
     let finalPrice = basePrice;
 
-    // Sum up percentage deductions from selected options (each % is of base_price)
+    // Sum up flat deductions from selected options
     for (const ans of answers) {
         const optRes = await pool.query(
             `SELECT price_deduction FROM sell_question_options WHERE id=$1 AND question_id=$2`,
             [ans.option_id, ans.question_id]
         );
         if (optRes.rowCount > 0) {
-            finalPrice -= (basePrice * parseFloat(optRes.rows[0].price_deduction) / 100);
+            finalPrice -= parseFloat(optRes.rows[0].price_deduction);
         }
     }
 
@@ -520,9 +520,10 @@ exports.calculateSellPrice = async (data) => {
 // ── Create Sell Listing ──────────────────────────────────────
 
 exports.createSellListing = async (data) => {
+    console.log("Creating sell listing with data:", data);
     const { user_id, category_slug, brand_slug, model_slug, config_id, answers, expected_price } = data;
 
-    if (!model_slug || !config_id || !answers || !expected_price)
+    if (!model_slug || !config_id || !answers || !expected_price || answers.length === 0)
         throw { status: 400, message: "model_slug, config_id, answers, and expected_price are required" };
 
     const client = await pool.connect();
@@ -546,16 +547,17 @@ exports.createSellListing = async (data) => {
         if (configRes.rowCount === 0) throw { status: 404, message: "Config not found" };
 
         let base_price = parseFloat(configRes.rows[0].base_price);
+        // console.log("Base price from config:", base_price);
         let quoted_price = base_price;
 
-        // Each price_deduction is a percentage of base_price
+        // Each price_deduction is a flat amount to subtract
         for (const ans of answers) {
             const optRes = await client.query(
                 `SELECT price_deduction FROM sell_question_options WHERE id=$1 AND question_id=$2`,
                 [ans.option_id, ans.question_id]
             );
             if (optRes.rowCount > 0) {
-                quoted_price -= (base_price * parseFloat(optRes.rows[0].price_deduction) / 100);
+                quoted_price -= parseFloat(optRes.rows[0].price_deduction);
             }
         }
         if (quoted_price < 0) quoted_price = 0;

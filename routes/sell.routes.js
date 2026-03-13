@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { reqBody } = require('../middlewares/req_body.middleware');
 const sellController = require('../controllers/sell.controller');
+const authMiddleware = require('../middlewares/auth.middleware');
 
 // Model Configs
 router.get('/configs/:model_slug', sellController.getModelConfigs);
@@ -41,7 +42,7 @@ router.post('/calculate-price', reqBody, sellController.calculatePrice);
 
 // Sell Listings (Leads)
 router.get('/listings', sellController.getListings);
-router.post('/listings', reqBody, sellController.createListing);
+router.post('/listings', authMiddleware,reqBody, sellController.createListing);
 router.put('/listings/:id/assign', reqBody, sellController.assignListing);
 router.put('/listings/:id/transfer', sellController.transferListing);
 router.put('/listings/:id/reject', sellController.rejectListing);

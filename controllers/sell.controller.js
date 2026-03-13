@@ -147,6 +147,7 @@ exports.calculatePrice = async (req, res) => {
 // ── Sell Listings (Leads) ─────────────────────────────────
 
 exports.createListing = async (req, res) => {
+    req.body.user_id = req.user.userId;
     const data = await sellService.createSellListing(req.body);
     res.status(201).json(data);
 };

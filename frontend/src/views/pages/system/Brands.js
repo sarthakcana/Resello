@@ -41,21 +41,22 @@ const Brands = () => {
     }, [])
 
     const createBrand = async () => {
-        if (!brand || !category || !file) return alert("Brand Name, Category & Image are required")
+        if (!brand || !category || !file) return showToast("danger", "Brand Name, Category & Image are required")
         if (confirm(`Is spelled "${brand}" correct?`)) {
             const catObj = categories.find(c => c.slug === category);
-            if (!catObj) return alert("Invalid category selected");
-            const formData = new FormData();
-            formData.append("name", brand);
-            formData.append("category_id", catObj.id);
-            formData.append("image", file);
-            const response = await create_brand(formData)
-            if (response.status === 200) {
-                fetchBrands(category)
-                toggleBrand()
-                setBrand("")
-            } else {
-                showToast("danger", "Failed to Save Brand.");
+            if (!catObj) return showToast("danger", "Invalid category selected");
+            try {
+                const formData = new FormData();
+                formData.append("name", brand);
+                formData.append("category_id", catObj.id);
+                formData.append("image", file);
+                await create_brand(formData);
+                showToast("success", "Brand saved successfully!");
+                fetchBrands(category);
+                toggleBrand();
+                setBrand("");
+            } catch (err) {
+                showToast("danger", err.response?.data?.message || "Failed to Save Brand.");
             }
         }
     }
@@ -115,7 +116,7 @@ const Brands = () => {
                                     type="file"
                                     onChange={(e) => setFile(e.target.files[0])}
                                     className="form-control"
-                                    placeholder="Category name" />                                 
+                                    placeholder="Category name" />
                             </div>
                             <div className="col-md-2 d-flex gap-2">
                                 <button onClick={createBrand} className="btn btn-md-md btn-sm btn-success me-2 text-white">

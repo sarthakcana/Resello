@@ -9,8 +9,14 @@ const Categories = () => {
     const [name, setName] = useState("")
     const [parent, setParent] = useState("")
     const [file, setFile] = useState("")
+    const [toast, setToast] = useState(null)
 
     const toggleCategory = () => setIsCategory(!isCategory)
+
+    const showToast = (type, msg) => {
+        setToast({ type, msg });
+        setTimeout(() => setToast(null), 3500);
+    };
 
     const fetchCategories = async () => {
         try {
@@ -28,7 +34,7 @@ const Categories = () => {
     }, [])
 
     const createCategory = async () => {
-        if (!name || !file) return alert("Category name & Image are required")
+        if (!name || !file) return showToast("danger", "Category name & Image are required")
 
         if (confirm(`Is "${name}" correct?`)) {
             try {
@@ -36,18 +42,14 @@ const Categories = () => {
                 formData.append("name", name);
                 formData.append("parent_id", parent || "");
                 formData.append("image", file);
-
-                const response = await create_category(formData)
-
-
-                if (response.status === 200) {
-                    fetchCategories()
-                    setName("")
-                    setParent("")
-                    toggleCategory()
-                }
+                await create_category(formData);
+                showToast("success", "Category created successfully!");
+                fetchCategories();
+                setName("");
+                setParent("");
+                toggleCategory();
             } catch (err) {
-                console.log(err)
+                showToast("danger", err.response?.data?.message || "Failed to create category.");
             }
         }
     }
@@ -56,18 +58,26 @@ const Categories = () => {
         if (!id) return
         if (confirm("Delete this category?")) {
             try {
-                const response = await delete_category(id)
-                if (response.status === 200) {
-                    setCategories(categories.filter(cat => cat.id !== id))
-                }
+                await delete_category(id);
+                showToast("success", "Category deleted");
+                setCategories(categories.filter(cat => cat.id !== id));
             } catch (err) {
-                console.log(err)
+                showToast("danger", err.response?.data?.message || "Failed to delete category.");
             }
         }
     }
 
     return (
         <div className="container py-4">
+            {toast && (
+                <div
+                    className={`alert alert-${toast.type} alert-dismissible position-fixed top-0 end-0 m-3 shadow`}
+                    style={{ zIndex: 9999, minWidth: 260 }}
+                >
+                    <span>{toast.msg}</span>
+                    <button className="btn-close" onClick={() => setToast(null)} />
+                </div>
+            )}
             <div className="card shadow-sm border-0">
                 <div className="card-header bg-white d-flex justify-content-between align-items-center">
                     <h4 className="fw-bold text-uppercase mb-0">Manage Categories</h4>

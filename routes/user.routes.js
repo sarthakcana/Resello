@@ -6,6 +6,12 @@ router.post('/create', userController.createUser);
 router.get('/get_users/', userController.getUsers);
 router.get('/get_users/:id', userController.getUsers);
 router.delete('/delete_user/:id', userController.deleteUser);
-// router.delete('/get_detail/:id', userController.deleteUser);
+
+// Merchant role
+router.post('/:id/merchant', userController.addMerchantRole);
+router.delete('/:id/merchant', userController.removeMerchantRole);
+
+// Status (suspend / activate)
+router.put('/:id/status', userController.updateUserStatus);
 
 module.exports = [router];

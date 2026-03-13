@@ -317,6 +317,7 @@ Refresh via `POST /auth/refresh`.
 |------|---------|-----------|
 | `200` | OK | Successful read / update / operation |
 | `201` | Created | Resource successfully created |
+| `304` | Not Modified | Resource same as last request |
 | `400` | Bad Request | Missing or invalid parameters |
 | `401` | Unauthorized | Invalid credentials or expired OTP |
 | `403` | Forbidden | Account inactive / access denied |

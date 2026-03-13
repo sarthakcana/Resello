@@ -67,8 +67,20 @@ export const create_model = (data) => {
 export const get_users = () => {
     return api.get('users/get_users')
 }
+export const create_user = (data) => {
+    return api.post('users/create', data)
+}
 export const delete_user = (id) => {
     return api.delete('users/delete_user/' + id)
+}
+export const add_merchant_role = (id) => {
+    return api.post(`users/${id}/merchant`)
+}
+export const remove_merchant_role = (id) => {
+    return api.delete(`users/${id}/merchant`)
+}
+export const update_user_status = (id, status) => {
+    return api.put(`users/${id}/status`, { status })
 }
 
 
