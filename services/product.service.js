@@ -576,3 +576,38 @@ exports.getQuestionsByModelSlug = async ({ modelSlug }) => {
 
     return result.rows;
 };
+
+exports.getVariantsByBrandModel = async ({ brandSlug, modelSlug }) => {
+    const values = [];
+    let whereClause = "WHERE m.status=1";
+    if(!brandSlug || !modelSlug) throw { status: 400, message: "brandSlug and modelSlug are required" };    
+    // if (brandSlug) {
+    //     values.push(brandSlug);
+    //     whereClause += ` AND b.slug=$${values.length}`;
+    // }
+
+    // if (modelSlug) {
+    //     values.push(modelSlug);
+    //     whereClause += ` AND m.slug=$${values.length}`;
+    // }
+
+    const result = await pool.query(`
+            SELECT m.name, m.slug, i.url
+            FROM models m
+            JOIN brands b ON m.brand_id=b.id
+            JOIN model_images mi ON m.id=mi.model_id
+            JOIN images i ON mi.image_id=i.id       
+            ${whereClause}
+            LIMIT 10
+        `, values);
+    for (let model of result.rows) {
+        model.variants = await pool.query(`
+            SELECT sc.id, sc.name, sc.base_price
+            FROM sell_model_configs sc
+            JOIN models m ON sc.model_id=m.id
+            WHERE m.status=1 AND m.slug=$1
+        `, [model.slug]).then(res => res.rows);
+    }
+
+    return result.rows;
+};

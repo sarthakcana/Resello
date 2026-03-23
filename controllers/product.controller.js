@@ -88,3 +88,8 @@ exports.getQuestionsByModelSlug = async (req, res) => {
     const result = await productService.getQuestionsByModelSlug(req.params);
     res.status(200).json(result);
 }
+
+exports.getVariantsByBrandModel = async (req, res) => {
+    const result = await productService.getVariantsByBrandModel(req.params);
+    res.status(200).json(result);
+}
