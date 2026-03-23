@@ -559,7 +559,7 @@ exports.createSellListing = async (data) => {
                 );
                 // console.log("deva", ans, opt, optRes.rows);
                 if (optRes.rowCount > 0) {
-                    quoted_price -= (quoted_price * parseFloat(optRes.rows[0].price_deduction))/100;
+                    quoted_price -= (base_price * parseFloat(optRes.rows[0].price_deduction))/100;
                 }
             }
         }

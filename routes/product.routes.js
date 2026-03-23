@@ -14,6 +14,7 @@ router.get('/get_products', productController.getProducts)
 router.get('/get_products/:id', productController.getProducts)
 
 router.get("/brand/:brandSlug/products", productController.getProductsByBrand);
+router.get("/brand/:brandSlug/models", productController.getModelsByBrandSeries);
 router.get("/brand/:brandSlug/:seriesSlug/models", productController.getModelsByBrandSeries);
 router.get("/brand/:brandSlug/series", productController.getSeriesByBrand);
 
