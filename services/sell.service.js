@@ -549,17 +549,21 @@ exports.createSellListing = async (data) => {
         let base_price = parseFloat(configRes.rows[0].base_price);
         // console.log("Base price from config:", base_price);
         let quoted_price = base_price;
-
+        // console.log("quoted price", quoted_price)
         // Each price_deduction is a flat amount to subtract
         for (const ans of answers) {
-            const optRes = await client.query(
-                `SELECT price_deduction FROM sell_question_options WHERE id=$1 AND question_id=$2`,
-                [ans.option_id, ans.question_id]
-            );
-            if (optRes.rowCount > 0) {
-                quoted_price -= parseFloat(optRes.rows[0].price_deduction);
+            for (const opt of ans.options) {
+                const optRes = await client.query(
+                    `SELECT price_deduction FROM sell_question_options WHERE id=$1 AND question_id=$2`,
+                    [opt, ans.question_id]
+                );
+                // console.log("deva", ans, opt, optRes.rows);
+                if (optRes.rowCount > 0) {
+                    quoted_price -= (quoted_price * parseFloat(optRes.rows[0].price_deduction))/100;
+                }
             }
         }
+        // console.log('rizz_quoted_price', quoted_price)
         if (quoted_price < 0) quoted_price = 0;
 
         // Insert listing
@@ -573,11 +577,13 @@ exports.createSellListing = async (data) => {
 
         // Insert answers
         for (const ans of answers) {
-            await client.query(
-                `INSERT INTO sell_listing_answers(listing_id, question_id, option_id)
+            for (const opt of ans.options) {
+                await client.query(
+                    `INSERT INTO sell_listing_answers(listing_id, question_id, option_id)
                  VALUES ($1, $2, $3)`,
-                [listing_id, ans.question_id, ans.option_id]
-            );
+                    [listing_id, ans.question_id, opt]
+                );
+            }
         }
 
         await client.query('COMMIT');

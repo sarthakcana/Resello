@@ -101,6 +101,70 @@ exports.updateUserStatus = async (user_id, status) => {
     return result.rows[0];
 };
 
+exports.updateUser = async (id, data) => {
+    const { email, phone, password, is_verified, profile, addresses, roles } = data;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // Update users table
+        if (email || phone || password || is_verified !== undefined) {
+            await client.query(
+                `UPDATE users SET 
+                    email=COALESCE($1, email), 
+                    phone=COALESCE($2, phone), 
+                    password=COALESCE($3, password), 
+                    is_verified=COALESCE($4, is_verified), 
+                    updated_at=NOW() 
+                 WHERE id=$5`,
+                [email, phone, password, is_verified, id]
+            );
+        }
+
+        // Update user_profile
+        if (profile) {
+            await client.query(
+                `UPDATE user_profile SET 
+                    first_name=COALESCE($1, first_name), 
+                    last_name=COALESCE($2, last_name), 
+                    avatar_url=COALESCE($3, avatar_url)
+                 WHERE user_id=$4`,
+                [profile.first_name, profile.last_name, profile.avatar_url, id]
+            );
+        }
+
+        // Update addresses
+        if (addresses) {
+            await client.query(`DELETE FROM addresses WHERE user_id=$1`, [id]);
+            for (const address of addresses) {
+                await client.query(
+                    `INSERT INTO addresses(user_id, name, phone, line1, line2, city, state, pincode, country, is_default) 
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+                    [id, address.name, address.phone, address.line1, address.line2, address.city, address.state, address.pincode, address.country, address.is_default]
+                );
+            }
+        }
+
+        // Update roles
+        if (roles) {
+            await client.query(`DELETE FROM user_roles WHERE user_id=$1`, [id]);
+            for (const role of roles) {
+                const roleData = await client.query(`SELECT id FROM roles WHERE id=$1`, [role]);
+                if (roleData.rowCount === 0) throw { status: 404, message: "No such Role: " + role };
+                await client.query(`INSERT INTO user_roles(user_id, role_id) VALUES ($1,$2)`, [id, roleData.rows[0].id]);
+            }
+        }
+
+        await client.query('COMMIT');
+    } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+    } finally {
+        client.release();
+    }
+    return { id, email };
+}
+
 // {
 //     "email": "abhi@gmail.com",
 //     "phone": "9325924134",

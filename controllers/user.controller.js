@@ -14,6 +14,13 @@ exports.createUser = async (req, res) => {
     res.status(201).json(data);
 }
 
+exports.updateUser = async (req, res) => {
+    const { id } = req.params;
+    if (!id) throw { status: 400, message: "ID is required" };
+    const data = await userService.updateUser(id, req.body);
+    res.status(200).json(data);
+}
+
 exports.addMerchantRole = async (req, res) => {
     const data = await userService.addMerchantRole(req.params.id);
     res.status(200).json(data);

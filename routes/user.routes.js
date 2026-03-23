@@ -5,6 +5,7 @@ const userController = require('../controllers/user.controller');
 router.post('/create', userController.createUser);
 router.get('/get_users/', userController.getUsers);
 router.get('/get_users/:id', userController.getUsers);
+router.put('/update/:id', userController.updateUser);
 router.delete('/delete_user/:id', userController.deleteUser);
 
 // Merchant role

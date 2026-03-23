@@ -48,6 +48,52 @@ exports.deleteService = async (id) => {
     return data.rows;
 }
 
+exports.updateService = async (id, data) => {
+    const { name, image } = data;
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+        const service = await client.query("SELECT * FROM services WHERE id=$1", [id]);
+        if (service.rowCount === 0) throw { status: 404, message: "Service not found" };
+
+        let slug;
+        if (name) {
+            slug = slugify(name, { lower: true, strict: true });
+            const val = await client.query("SELECT 1 ans FROM services WHERE slug=$1 AND id!=$2", [slug, id]);
+            if (val.rowCount >= 1) throw { status: 409, message: "Service with this name already Exists" }
+            await client.query("UPDATE services SET name=$1, slug=$2 WHERE id=$3", [name, slug, id]);
+        }
+
+        if (image) {
+            const imgResult = await client.query(`SELECT image_id FROM service_images WHERE service_id=$1`, [id]);
+            const oldImageId = imgResult.rows[0].image_id;
+            const oldImageResult = await client.query(`SELECT url FROM images WHERE id=$1`, [oldImageId]);
+            const oldImageUrl = oldImageResult.rows[0].url;
+
+            const img = await client.query(`INSERT INTO images(url, alt_text, uploaded_by) VALUES ($1, $2, $3) RETURNING id`, [image, name + " Image", null]);
+            await client.query(`UPDATE service_images SET image_id=$1 WHERE service_id=$2`, [img.rows[0].id, id]);
+            await deleteFile(oldImageUrl);
+            await client.query(`DELETE FROM images WHERE id=$1`, [oldImageId]);
+        }
+
+        await client.query("COMMIT");
+        const updatedService = await pool.query(`SELECT s.id, s.name, img.url from services s
+            JOIN service_images si ON s.id=si.service_id
+            JOIN images img ON si.image_id=img.id
+            where s.id=$1`, [id]);
+        return updatedService.rows[0];
+    } catch (error) {
+        if (image) await deleteFile(image);
+        await client.query("ROLLBACK");
+        throw {
+            status: error.status || 500,
+            message: error.message || "Failed to update Service"
+        };
+    } finally {
+        client.release();
+    }
+}
+
 exports.getCategories = async ({ sub }) => {
     let whquery = "WHERE c1.is_active=True"
     if (sub.toString().toLowerCase() == 'true') {
@@ -128,6 +174,59 @@ exports.deleteCategory = async (id) => {
     const data = await pool.query(`UPDATE categories SET is_active=False WHERE id=$1 RETURNING id, name`, [id]);
     return data.rows;
 }
+
+exports.updateCategory = async (id, data) => {
+    const { name, parent_id, image } = data;
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+        const category = await client.query("SELECT * FROM categories WHERE id=$1", [id]);
+        if (category.rowCount === 0) throw { status: 404, message: "Category not found" };
+
+        if (name) {
+            const slug = slugify(name, { lower: true, strict: true });
+            const val = await client.query("SELECT 1 ans FROM categories WHERE slug=$1 AND id!=$2", [slug, id]);
+            if (val.rowCount >= 1) throw { status: 409, message: "Category with this name already Exists" }
+            await client.query("UPDATE categories SET name=$1, slug=$2 WHERE id=$3", [name, slug, id]);
+        }
+
+        if (parent_id) {
+            const parentCheck = await client.query("SELECT 1 FROM categories WHERE id=$1", [parent_id]);
+            if (parentCheck.rowCount === 0) throw { status: 404, message: "No such Parent Category" };
+            await client.query("UPDATE categories SET parent_id=$1 WHERE id=$2", [parent_id, id]);
+        }
+
+        if (image) {
+            const imgResult = await client.query(`SELECT image_id FROM category_images WHERE category_id=$1`, [id]);
+            const oldImageId = imgResult.rows[0].image_id;
+            const oldImageResult = await client.query(`SELECT url FROM images WHERE id=$1`, [oldImageId]);
+            const oldImageUrl = oldImageResult.rows[0].url;
+
+            const img = await client.query(`INSERT INTO images(url, alt_text, uploaded_by) VALUES ($1, $2, $3) RETURNING id`, [image, name + " Image", null]);
+            await client.query(`UPDATE category_images SET image_id=$1 WHERE category_id=$2`, [img.rows[0].id, id]);
+            await deleteFile(oldImageUrl);
+            await client.query(`DELETE FROM images WHERE id=$1`, [oldImageId]);
+        }
+
+        await client.query("COMMIT");
+        const updatedCategory = await pool.query(`SELECT c1.id, c1.name, c1.slug, c2.name Parent, '/system/get_brands/'|| c1.slug route, img.url 
+            FROM categories c1 LEFT JOIN categories c2 ON c1.parent_id=c2.id
+            JOIN category_images ci ON c1.id=ci.category_id
+            JOIN images img ON ci.image_id=img.id
+            WHERE c1.id=$1`, [id]);
+        return updatedCategory.rows[0];
+    } catch (error) {
+        if (image) await deleteFile(image);
+        await client.query("ROLLBACK");
+        throw {
+            status: error.status || 500,
+            message: error.message || "Failed to update Category"
+        };
+    } finally {
+        client.release();
+    }
+}
+
 exports.getBrands = async ({ cat_slug }) => {
     // console.log(cat_slug, "category slug") // IGNORE
     let whquery = " WHERE b.status=1";
@@ -236,6 +335,60 @@ exports.deleteBrand = async (id) => {
     return data.rows;
 }
 
+exports.updateBrand = async (id, data) => {
+    const { name, category_id, image } = data;
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+        const brand = await client.query("SELECT * FROM brands WHERE id=$1", [id]);
+        if (brand.rowCount === 0) throw { status: 404, message: "Brand not found" };
+
+        if (name) {
+            const slug = slugify(name, { lower: true, strict: true });
+            const val = await client.query("SELECT 1 ans FROM brands WHERE slug=$1 AND id!=$2", [slug, id]);
+            if (val.rowCount >= 1) throw { status: 409, message: "Brand with this name already Exists" }
+            await client.query("UPDATE brands SET name=$1, slug=$2 WHERE id=$3", [name, slug, id]);
+        }
+
+        if (category_id) {
+            const categoryCheck = await client.query("SELECT 1 FROM categories WHERE id=$1", [category_id]);
+            if (categoryCheck.rowCount === 0) throw { status: 404, message: "Invalid Category" };
+            await client.query("UPDATE brand_categories SET category_id=$1 WHERE brand_id=$2", [category_id, id]);
+        }
+
+        if (image) {
+            const imgResult = await client.query(`SELECT image_id FROM brand_images WHERE brand_id=$1`, [id]);
+            const oldImageId = imgResult.rows[0].image_id;
+            const oldImageResult = await client.query(`SELECT url FROM images WHERE id=$1`, [oldImageId]);
+            const oldImageUrl = oldImageResult.rows[0].url;
+
+            const img = await client.query(`INSERT INTO images(url, alt_text, uploaded_by) VALUES ($1, $2, $3) RETURNING id`, [image, "Brand Image", null]);
+            await client.query(`UPDATE brand_images SET image_id=$1 WHERE brand_id=$2`, [img.rows[0].id, id]);
+            await deleteFile(oldImageUrl);
+            await client.query(`DELETE FROM images WHERE id=$1`, [oldImageId]);
+        }
+
+        await client.query("COMMIT");
+        const updatedBrand = await pool.query(`select b.id, b.name, b.slug, img.url, count(DISTINCT ms.id) series_count
+            from brands b
+            join brand_categories bc on b.id = bc.brand_id
+            join brand_images bi on b.id=bi.brand_id
+            join images img on bi.image_id=img.id
+            left join model_series ms on b.id=ms.brand_id and ms.status=1
+            WHERE b.id=$1
+            group by b.id, img.url`, [id]);
+        return updatedBrand.rows[0];
+    } catch (error) {
+        if (image) await deleteFile(image);
+        await client.query("ROLLBACK");
+        throw {
+            status: error.status || 500,
+            message: error.message || "Failed to update Brand"
+        };
+    } finally {
+        client.release();
+    }
+}
 
 exports.getRoles = async () => {
     const data = await pool.query(`SELECT id, name FROM roles WHERE is_system=True`);
@@ -283,7 +436,7 @@ exports.createSeries = async ({ name, brand_slug }) => {
 exports.getModels = async ({ cat_slug, brand_slug, series_slug }) => {
     // const { cat_slug, brand_slug, series_slug } = params
     if (!cat_slug || !brand_slug || !series_slug) throw { status: 404, message: "Series, Category & Brand are required" };
-    
+
     const data = await pool.query(`
         SELECT m.name, m.slug, img.url FROM models m
         JOIN categories c ON m.category_id=c.id
@@ -300,7 +453,7 @@ exports.createModel = async ({ name, cat_slug, brand_slug, series_slug, image })
     const client = await pool.connect();
     let imageInserted = false;
     // console.log(name, cat_slug, brand_slug, series_slug, "model data") // IGNORE
-    
+
     if (!name || !brand_slug || !cat_slug || !series_slug || !image) throw { status: 400, message: "Unsufficient Parameters" }
     const slug = slugify(name, { lower: true, strict: true });
     try {
@@ -311,8 +464,8 @@ exports.createModel = async ({ name, cat_slug, brand_slug, series_slug, image })
         if (val1.rowCount === 0) throw { status: 404, message: "Invalid Category Slug" };
         const val2 = await client.query("SELECT id FROM model_series WHERE slug=$1", [series_slug]);
         if (val2.rowCount === 0) throw { status: 404, message: "Invalid Series Slug" };
-        
-        const brand_id= val0.rows[0].id;
+
+        const brand_id = val0.rows[0].id;
         const series_id = val2.rows[0].id;
         const cat_id = val1.rows[0].id;
 
@@ -320,7 +473,7 @@ exports.createModel = async ({ name, cat_slug, brand_slug, series_slug, image })
         if (valF.rowCount >= 1) throw { status: 409, message: "Model Already Exists" };
 
         const result = await client.query("INSERT INTO models(brand_id, series_id, category_id, name, slug) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, slug", [brand_id, series_id, cat_id, name, slug]);
-        
+
         const model_id = result.rows[0].id;
         const img = await client.query(
             `INSERT INTO images(url, alt_text, uploaded_by)

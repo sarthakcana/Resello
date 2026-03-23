@@ -41,7 +41,22 @@ exports.softDeleteProduct = async (req, res) => {
 exports.updateProduct = async (req, res) => {
     const { id } = req.params;
     if (!id) throw { status: 400, message: "ID is required" };
-    const result = await productService.updateProduct(id, req.body);
+
+    let data = req.body;
+    if (req.body.data) {
+        data = JSON.parse(req.body.data);
+    }
+
+    if (req.files && req.files.length > 0) {
+        data.imagesMeta = data.imagesMeta.map((e, index) => {
+            if (req.files[index]) {
+                e.url = req.files[index].filename;
+            }
+            return e;
+        });
+    }
+
+    const result = await productService.updateProduct(id, data);
     res.status(200).json(result);
 }
 

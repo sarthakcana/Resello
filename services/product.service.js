@@ -120,22 +120,91 @@ exports.softDeleteProduct = async (id) => {
 }
 
 exports.updateProduct = async (id, payload) => {
-    const { name, description, vendor, slug, status, condition } = payload;
-    const result = await pool.query(
-        `UPDATE product_master
-         SET name=COALESCE($1, name),
-             description=COALESCE($2, description),
-             vendor=COALESCE($3, vendor),
-             slug=COALESCE($4, slug),
-             status=COALESCE($5, status),
-             condition=COALESCE($6, condition),
-             updated_at=NOW()
-         WHERE id=$7
-         RETURNING id, name, slug`,
-        [name || null, description || null, vendor || null, slug || null, status || null, condition || null, id]
-    );
-    if (result.rowCount === 0) throw { status: 404, message: "Product not found" };
-    return result.rows[0];
+    const client = await pool.connect();
+    const { product, options, variants, attributes, imagesMeta } = payload;
+
+    try {
+        await client.query('BEGIN');
+
+        // Update product_master
+        if (product) {
+            const isExist = await client.query(`SELECT id FROM product_master WHERE slug=$1 AND id!=$2`, [product.slug, id]);
+            if (isExist.rowCount > 0) throw { status: 409, message: "Product with same slug already exists" }
+            await client.query(
+                `UPDATE product_master 
+                 SET name=$1, model_id=$2, description=$3, vendor=$4, slug=$5, updated_at=NOW() 
+                 WHERE id=$6`,
+                [product.name, product.model_id, product.description, product.vendor, product.slug, id]
+            );
+        }
+
+        // Clear and update options and their values
+        if (options) {
+            await client.query(`DELETE FROM product_options WHERE product_id=$1`, [id]);
+            let optionValueMap = {};
+            for (const option of options) {
+                const opt = await client.query(`INSERT INTO product_options (product_id, name) VALUES ($1,$2) RETURNING id`, [id, option.name]);
+                const option_id = opt.rows[0].id;
+                for (const value of option.values) {
+                    const pov = await client.query(`INSERT INTO product_option_values (option_id, value) VALUES ($1,$2) RETURNING id`, [option_id, value]);
+                    optionValueMap[`${option.name}:${value}`] = pov.rows[0].id;
+                }
+            }
+        }
+
+        // Clear and update variants
+        if (variants) {
+            await client.query(`DELETE FROM product_variants WHERE product_id=$1`, [id]);
+            for (const variant of variants) {
+                const varnt = await client.query(`INSERT INTO product_variants (product_id, sku, price, inventory_quantity) VALUES ($1,$2,$3,$4) RETURNING id`,
+                    [id, variant.sku, variant.price, variant.inventory_quantity]);
+                const variant_id = varnt.rows[0].id;
+
+                for (const opt of variant.combo) {
+                    const opt_id = optionValueMap[`${opt.option}:${opt.value}`];
+                    await client.query(`INSERT INTO variant_option_values (variant_id, option_value_id) VALUES ($1,$2)`, [variant_id, opt_id]);
+                }
+            }
+        }
+
+        // Clear and update attributes
+        if (attributes) {
+            await client.query(`DELETE FROM product_attributes WHERE product_id=$1`, [id]);
+            for (const attr of attributes) {
+                await client.query(`INSERT INTO product_attributes(product_id, key, value) VALUES($1, $2, $3)`, [id, attr.key, attr.value])
+            }
+        }
+
+        // Update images
+        if (imagesMeta) {
+            const oldImages = await client.query(`SELECT i.id, i.url FROM product_images pi JOIN images i ON pi.image_id=i.id WHERE pi.product_id=$1`, [id]);
+            for (const oldImage of oldImages.rows) {
+                await deleteFile(oldImage.url);
+                await client.query(`DELETE FROM images WHERE id=$1`, [oldImage.id]);
+            }
+            await client.query(`DELETE FROM product_images WHERE product_id=$1`, [id]);
+
+            for (let i = 0; i < imagesMeta.length; i++) {
+                const imgs = await client.query(`INSERT INTO images(url, alt_text) VALUES($1, $2) RETURNING id`, [imagesMeta[i].url, imagesMeta[i].alt_text]);
+                const image_id = imgs.rows[0].id;
+                await client.query(`INSERT INTO product_images(product_id, image_id, is_primary, sort_index) VALUES($1, $2, $3,$4)`, [id, image_id, imagesMeta[i].is_primary, imagesMeta[i].sort_index]);
+            }
+        }
+
+        await client.query("COMMIT");
+        return { id, name: product.name };
+    } catch (e) {
+        await client.query('ROLLBACK');
+        if (imagesMeta) {
+            for (const img of imagesMeta) {
+                if (img.url) await deleteFile(img.url);
+            }
+        }
+        throw { status: e.status || 500, message: e.message || "Error updating product" }
+    }
+    finally {
+        client.release();
+    }
 }
 
 exports.getProductBySlug = async ({ slug }) => {
