@@ -579,8 +579,8 @@ exports.getQuestionsByModelSlug = async ({ modelSlug }) => {
 
 exports.getVariantsByBrandModel = async ({ brandSlug, modelSlug }) => {
     const values = [];
-    let whereClause = "WHERE m.status=1";
-    if(!brandSlug || !modelSlug) throw { status: 400, message: "brandSlug and modelSlug are required" };    
+    // let whereClause = "WHERE m.status=1 AND m.slug=";
+    if (!brandSlug || !modelSlug) throw { status: 400, message: "brandSlug and modelSlug are required" };
     // if (brandSlug) {
     //     values.push(brandSlug);
     //     whereClause += ` AND b.slug=$${values.length}`;
@@ -597,9 +597,10 @@ exports.getVariantsByBrandModel = async ({ brandSlug, modelSlug }) => {
             JOIN brands b ON m.brand_id=b.id
             JOIN model_images mi ON m.id=mi.model_id
             JOIN images i ON mi.image_id=i.id       
-            ${whereClause}
+            where m.slug=$1 AND b.slug=$2
             LIMIT 10
-        `, values);
+        `, [modelSlug, brandSlug]);
+    if (result.rows.length == 0) throw { status: 400, message: "Invalid Model or brand" }
     for (let model of result.rows) {
         model.variants = await pool.query(`
             SELECT sc.id, sc.name, sc.base_price

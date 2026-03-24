@@ -110,6 +110,8 @@ exports.requestOTP = async (data) => {
     }
     if (!otp) throw { status: 500, message: "Error generating OTP" };
 
+    console.log(process.env.BREVO_EMAIL, "EMAIL??")
+    console.log(process.env.BREVO_SMTP_KEY, "key??")
     await this.sendEmailOTP({ otp: otp, email: email });
     return { message: "OTP sent", id }; // Remove otp in production
 };
