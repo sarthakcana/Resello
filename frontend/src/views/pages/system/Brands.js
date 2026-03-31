@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { get_cat_brands, delete_brand, create_brand, get_categories } from "src/api/system_service"
 import CIcon from '@coreui/icons-react'
 import { cilNoteAdd, cilPlus, cilX } from '@coreui/icons'
+import ThemedTablePage from 'src/components/ThemedTablePage'
 
 const Brands = () => {
     const [brands, setBrands] = useState([])
@@ -12,6 +13,7 @@ const Brands = () => {
     const [brand, setBrand] = useState("")
     const [category, setCategory] = useState("")
     const [file, setFile] = useState("")
+    const [query, setQuery] = useState('')
 
     const toggleBrand = () => setIsBrand(!isBrand)
 
@@ -79,99 +81,160 @@ const Brands = () => {
         setCategory(catSlug)
     }
 
+    const filteredBrands = useMemo(() => {
+        const q = query.trim().toLowerCase()
+        if (!q) return brands
+        return brands.filter((b) => String(b?.name || '').toLowerCase().includes(q))
+    }, [brands, query])
+
+    const rows = useMemo(
+        () => filteredBrands.map((b, idx) => ({ ...b, _rowIndex: idx + 1 })),
+        [filteredBrands],
+    )
+
+    const columns = useMemo(
+        () => [
+            {
+                key: '_rowIndex',
+                label: '#',
+                render: (b) => b._rowIndex,
+                headerClassName: 'text-center',
+                cellClassName: 'text-center',
+                headerStyle: { width: 70 },
+            },
+            { key: 'name', label: 'Name', render: (b) => b?.name },
+            {
+                key: 'image',
+                label: 'Image',
+                headerClassName: 'text-center',
+                cellClassName: 'text-center',
+                render: (b) => (
+                    <img
+                        className="rounded"
+                        src={import.meta.env.VITE_API_URL + 'uploads/' + b.url}
+                        alt=""
+                        style={{ width: '3rem' }}
+                    />
+                ),
+            },
+            {
+                key: 'action',
+                label: 'Action',
+                headerClassName: 'text-center',
+                cellClassName: 'text-center',
+                render: (b) => (
+                    <>
+                        <button className="btn btn-sm btn-outline-success me-2">Edit</button>
+                        <button onClick={() => deleteBrand(b.id)} className="btn btn-sm btn-outline-danger">
+                            Delete
+                        </button>
+                    </>
+                ),
+            },
+        ],
+        [deleteBrand],
+    )
+
+    const filtersContent = (
+        <div className="d-grid gap-2">
+            <div>
+                <div className="small text-medium-emphasis mb-1">Search</div>
+                <input
+                    className="form-control form-control-sm"
+                    placeholder="Search brand name"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                />
+            </div>
+            <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary"
+                onClick={() => setQuery('')}
+                disabled={!query}
+            >
+                Reset
+            </button>
+        </div>
+    )
+
+    const topContent = (
+        <>
+            <div className="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <h4 className="fw-bold mb-0 text-uppercase d-flex flex-wrap">
+                    <span className="my-auto">Manage Brands :</span>
+                    <select
+                        style={{ outline: 'none' }}
+                        className="no-arrow border-0 d-inline-block w-auto ms-2 text-uppercase h6 my-auto"
+                        value={category}
+                        onChange={(e) => setBrandsByCategory(e.target.value)}
+                    >
+                        {categories.map((cat) => (
+                            <option key={cat.slug} value={cat.slug}>
+                                {cat.name}
+                            </option>
+                        ))}
+                    </select>
+                </h4>
+            </div>
+
+            {isBrand && (
+                <div className="row g-2 mb-4 align-items-center">
+                    <div className="col-md-4">
+                        <input
+                            type="text"
+                            value={brand}
+                            onChange={(e) => setBrand(e.target.value)}
+                            className="form-control"
+                            placeholder="Enter unique Brand name"
+                        />
+                    </div>
+                    <div className="col-md-3">
+                        <input
+                            type="file"
+                            onChange={(e) => setFile(e.target.files[0])}
+                            className="form-control"
+                            placeholder="Category name"
+                        />
+                    </div>
+                    <div className="col-md-2 d-flex gap-2">
+                        <button onClick={createBrand} className="btn btn-md-md btn-sm btn-success me-2 text-white">
+                            Save
+                        </button>
+                        <button onClick={toggleBrand} className="btn btn-sm btn-secondary">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
+        </>
+    )
+
     return (
         <div className="container py-4">
-            <div className="card shadow-sm border-0">
-                <div className="card-header bg-white d-flex justify-content-between align-items-center">
-                    <h4 className="fw-bold mb-0 text-uppercase d-flex">
-                        <span className="my-auto">Manage Brands :</span>
-                        <select style={{ 'outline': 'none' }} className="no-arrow border-0 d-inline-block w-auto ms-2 text-uppercase h6 my-auto" value={category}
-                            onChange={(e) => setBrandsByCategory(e.target.value)} >
-                            {categories.map((cat) => (
-                                <option key={cat.slug} value={cat.slug}>{cat.name}</option>
-                            ))}
-                        </select> </h4>
-                    {!isBrand && (
-                        <button onClick={toggleBrand} className="btn btn-primary">
-                            <CIcon icon={cilPlus} className="me-1" />
-                            Add Brand
-                        </button>
-                    )}
-                </div>
-
-                <div className="card-body">
-                    {isBrand && (
-                        <div className="row g-2 mb-4 align-items-center">
-                            <div className="col-md-4">
-                                <input
-                                    type="text"
-                                    value={brand}
-                                    onChange={e => setBrand(e.target.value)}
-                                    className="form-control"
-                                    placeholder="Enter unique Brand name"
-                                />
-                            </div>
-                            <div className="col-md-3">
-                                <input
-                                    type="file"
-                                    onChange={(e) => setFile(e.target.files[0])}
-                                    className="form-control"
-                                    placeholder="Category name" />
-                            </div>
-                            <div className="col-md-2 d-flex gap-2">
-                                <button onClick={createBrand} className="btn btn-md-md btn-sm btn-success me-2 text-white">
-                                    Save
-                                </button>
-                                <button onClick={toggleBrand} className="btn btn-sm btn-secondary">
-
-                                    Cancel
-                                </button>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="table-responsive">
-                        <table className="table table-hover align-middle">
-                            <thead className="table-light">
-                                <tr className="text-center">
-                                    <th>#</th>
-                                    <th>Name</th>
-                                    <th>Image</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-
-                            <tbody>
-                                {brands.length ? brands.map((ele, index) => (
-                                    <tr key={ele.id} className="text-center">
-                                        <td className="text-center">{index + 1}</td>
-                                        <td>{ele.name}</td>
-                                        <td><img className="rounded" src={import.meta.env.VITE_API_URL + "uploads/" + ele.url} alt="" style={{ width: '3rem' }} /></td>
-                                        <td className="text-center">
-                                            <button className="btn btn-sm btn-outline-success me-2">
-                                                Edit
-                                            </button>
-                                            <button
-                                                onClick={() => deleteBrand(ele.id)}
-                                                className="btn btn-sm btn-outline-danger"
-                                            >
-                                                Delete
-                                            </button>
-                                        </td>
-                                    </tr>
-                                )) : (
-                                    <tr>
-                                        <td colSpan="4" className="text-center text-muted py-4">
-                                            No Brands Found
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
+            <ThemedTablePage
+                actions={{
+                    filtersContent,
+                    onExport: null,
+                    primary: !isBrand
+                        ? {
+                            label: 'Add Brand',
+                            color: 'primary',
+                            icon: <CIcon icon={cilPlus} />,
+                            onClick: toggleBrand,
+                        }
+                        : null,
+                }}
+                topContent={topContent}
+                columns={columns}
+                rows={rows}
+                rowKey={(b) => b.id}
+                emptyText={brands.length === 0 ? 'No Brands Found' : 'No Brands match your filters'}
+                footerLeft={
+                    <div className="small text-medium-emphasis">
+                        Showing {filteredBrands.length} of {brands.length} brands
                     </div>
-
-                </div>
-            </div>
+                }
+            />
         </div>
     )
 }

@@ -15,7 +15,7 @@ router.delete('/delete_service/:id', systemController.deleteService);
 router.get('/get_categories/:sub', systemController.getCategories)
 router.post('/create_category', upload.single('image'), reqBody, systemController.createCategory)
 router.put('/update_category/:id', upload.single('image'), reqBody, systemController.updateCategory)
-router.delete('/delete_category/:id', systemController.deleteCategory)
+router.patch('/toggle_category/:id', reqBody, systemController.toggleCategory)
 
 router.get('/get_brands', systemController.getBrands)
 router.get('/get_brands/:cat_slug', systemController.getBrands)

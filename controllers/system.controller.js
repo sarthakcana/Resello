@@ -37,10 +37,11 @@ exports.updateCategory = async (req, res) => {
     res.status(200).json(data);
 }
 
-exports.deleteCategory = async (req, res) => {
+exports.toggleCategory = async (req, res) => {
     const { id } = req.params;
     if (!id) throw { status: 400, message: "ID is required" }
-    const data = await systemService.deleteCategory(id);
+    const { status } = req.body;
+    const data = await systemService.toggleCategory(id, status);
     res.status(200).json(data);
 }
 

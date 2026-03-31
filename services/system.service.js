@@ -95,11 +95,11 @@ exports.updateService = async (id, data) => {
 }
 
 exports.getCategories = async ({ sub }) => {
-    let whquery = "WHERE c1.is_active=True"
+    let whquery = ""; //WHERE c1.is_active=True
     if (sub.toString().toLowerCase() == 'true') {
-        whquery += " AND c1.parent_id IS NOT NULL"
+        whquery += " WHERE c1.parent_id IS NOT NULL"
     }
-    const data = await pool.query(`SELECT c1.id, c1.name, c1.slug, c2.name Parent, '/system/get_brands/'|| c1.slug route, img.url 
+    const data = await pool.query(`SELECT c1.id, c1.name, c1.slug, c2.name Parent, img.url, c1.is_active status 
         FROM categories c1 LEFT JOIN categories c2 ON c1.parent_id=c2.id
         JOIN category_images ci ON c1.id=ci.category_id
         JOIN images img ON ci.image_id=img.id
@@ -170,8 +170,8 @@ exports.createCategory = async (data) => {
         client.release();
     }
 };
-exports.deleteCategory = async (id) => {
-    const data = await pool.query(`UPDATE categories SET is_active=False WHERE id=$1 RETURNING id, name`, [id]);
+exports.toggleCategory = async (id, status) => {
+    const data = await pool.query(`UPDATE categories SET is_active=$1 WHERE id=$2 RETURNING id, name`, [status, id]);
     return data.rows;
 }
 

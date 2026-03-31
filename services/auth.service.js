@@ -3,7 +3,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const { sendEmail } = require("../providers/email.provider");
 const { v7: uuid7 } = require('uuid');
-const { password } = require("pg/lib/defaults");
+// const { password } = require("pg/lib/defaults");
 
 
 const SALT_ROUNDS = 10;
@@ -110,8 +110,8 @@ exports.requestOTP = async (data) => {
     }
     if (!otp) throw { status: 500, message: "Error generating OTP" };
 
-    console.log(process.env.BREVO_EMAIL, "EMAIL??")
-    console.log(process.env.BREVO_SMTP_KEY, "key??")
+    // console.log(process.env.BREVO_EMAIL, "EMAIL??")
+    // console.log(process.env.BREVO_SMTP_KEY, "key??")
     await this.sendEmailOTP({ otp: otp, email: email });
     return { message: "OTP sent", id }; // Remove otp in production
 };
@@ -264,6 +264,7 @@ exports.loginUser = async (data) => {
 };
 
 exports.refreshToken = async (cookies) => {
+    console.log( "REFRESH TOKEN RESULT")
     // console.log(req.cookies)
     const { refreshToken } = cookies;
 

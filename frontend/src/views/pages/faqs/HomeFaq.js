@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { getFaqs, deleteFaq, toggleFaqStatus } from '../../../api/faq.api'
 import Swal from 'sweetalert2'
 import { useNavigate } from 'react-router-dom'
+import ThemedTablePage from 'src/components/ThemedTablePage'
 
 const HomeFaqs = () => {
   const navigate = useNavigate()
@@ -11,6 +12,7 @@ const HomeFaqs = () => {
 
   const [currentPage, setCurrentPage] = useState(1)
   const faqsPerPage = 10
+  const [query, setQuery] = useState('')
 
   const loadFaqs = async () => {
     try {
@@ -74,126 +76,113 @@ const HomeFaqs = () => {
     }
   }
 
+  const filteredFaqs = query.trim()
+    ? faqs.filter((f) => String(f?.question || '').toLowerCase().includes(query.trim().toLowerCase()))
+    : faqs
+
   // PAGINATION
   const indexOfLast = currentPage * faqsPerPage
   const indexOfFirst = indexOfLast - faqsPerPage
-  const currentFaqs = faqs.slice(indexOfFirst, indexOfLast)
+  const currentFaqs = filteredFaqs.slice(indexOfFirst, indexOfLast)
 
-  const totalPages = Math.ceil(faqs.length / faqsPerPage)
+  const totalPages = Math.ceil(filteredFaqs.length / faqsPerPage)
 
-  if (loading) return <p>Loading FAQs...</p>
+  const rows = currentFaqs.map((f, index) => ({ ...f, _rowIndex: indexOfFirst + index + 1 }))
+
+  const columns = [
+    { key: '_rowIndex', label: 'Sr No', render: (f) => f._rowIndex, headerStyle: { width: 80 } },
+    { key: 'question', label: 'Question', render: (f) => f.question },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (f) => (
+        <div className="form-check form-switch">
+          <input
+            className="form-check-input"
+            type="checkbox"
+            checked={Boolean(f.status)}
+            onChange={() => handleToggle(f)}
+          />
+        </div>
+      ),
+    },
+    {
+      key: 'action',
+      label: 'Action',
+      render: (f) => (
+        <>
+          <button className="btn btn-sm btn-primary me-2" onClick={() => navigate(`/faqs/edit/${f.id}`)}>
+            Edit
+          </button>
+          <button className="btn btn-sm btn-danger" onClick={() => handleDelete(f.id)}>
+            Delete
+          </button>
+        </>
+      ),
+    },
+  ]
+
+  const filtersContent = (
+    <div className="d-grid gap-2">
+      <div>
+        <div className="small text-medium-emphasis mb-1">Search</div>
+        <input
+          className="form-control form-control-sm"
+          placeholder="Search question"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setCurrentPage(1)
+          }}
+        />
+      </div>
+      <button
+        type="button"
+        className="btn btn-sm btn-outline-secondary"
+        onClick={() => {
+          setQuery('')
+          setCurrentPage(1)
+        }}
+        disabled={!query}
+      >
+        Reset
+      </button>
+    </div>
+  )
 
   return (
-    <div className="card">
-      <div className="card-header d-flex justify-content-between align-items-center">
-        <strong>Manage FAQs</strong>
-
-        <button
-          className="btn btn-sm btn-success"
-          onClick={() => navigate('/faqs/add')}
-        >
-          Add FAQ
-        </button>
-      </div>
-
-      <div className="card-body">
-        {faqs.length === 0 ? (
-          <p>No FAQs found</p>
-        ) : (
-          <>
-            <table className="table table-bordered align-middle">
-              <thead>
-                <tr>
-                  <th>Sr No</th>
-                  <th>Question</th>
-                  <th>Status</th>
-                  <th width="160">Action</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {currentFaqs.map((f, index) => (
-                  <tr key={f.id}>
-                    <td>{indexOfFirst + index + 1}</td>
-
-                    <td>{f.question}</td>
-
-                    <td>
-                      <div className="form-check form-switch">
-                        <input
-                          className="form-check-input"
-                          type="checkbox"
-                          checked={Boolean(f.status)}
-                          onChange={() => handleToggle(f)}
-                        />
-                      </div>
-                    </td>
-
-                    <td>
-                      <button
-                        className="btn btn-sm btn-primary me-2"
-                        onClick={() => navigate(`/faqs/edit/${f.id}`)}
-                      >
-                        Edit
-                      </button>
-
-                      <button
-                        className="btn btn-sm btn-danger"
-                        onClick={() => handleDelete(f.id)}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {/* PAGINATION */}
-            <div className="d-flex justify-content-center mt-3">
-              <ul className="pagination">
-
-                <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
-                  <button
-                    className="page-link"
-                    onClick={() => setCurrentPage(currentPage - 1)}
-                  >
-                    Previous
-                  </button>
-                </li>
-
-                {[...Array(totalPages)].map((_, i) => (
-                  <li
-                    key={i}
-                    className={`page-item ${currentPage === i + 1 ? 'active' : ''}`}
-                  >
-                    <button
-                      className="page-link"
-                      onClick={() => setCurrentPage(i + 1)}
-                    >
-                      {i + 1}
-                    </button>
-                  </li>
-                ))}
-
-                <li
-                  className={`page-item ${
-                    currentPage === totalPages ? 'disabled' : ''
-                  }`}
-                >
-                  <button
-                    className="page-link"
-                    onClick={() => setCurrentPage(currentPage + 1)}
-                  >
-                    Next
-                  </button>
-                </li>
-
-              </ul>
-            </div>
-          </>
-        )}
-      </div>
+    <div className="container py-4">
+      <ThemedTablePage
+        actions={{
+          filtersContent,
+          onExport: null,
+          primary: {
+            label: 'Add FAQ',
+            color: 'success',
+            onClick: () => navigate('/faqs/add'),
+          },
+        }}
+        topContent={<div className="mb-3"><h4 className="fw-bold mb-0 text-uppercase">Manage FAQs</h4></div>}
+        columns={columns}
+        rows={rows}
+        rowKey={(f) => f.id}
+        loading={loading}
+        emptyText={filteredFaqs.length === 0 ? 'No FAQs found' : 'No FAQs match your filters'}
+        footerLeft={
+          <div className="small text-medium-emphasis">
+            Showing {rows.length} of {filteredFaqs.length} FAQs
+          </div>
+        }
+        pagination={
+          totalPages > 1
+            ? {
+              page: currentPage,
+              totalPages,
+              onChange: (p) => setCurrentPage(p),
+            }
+            : null
+        }
+      />
     </div>
   )
 }

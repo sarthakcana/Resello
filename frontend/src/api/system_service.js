@@ -15,8 +15,11 @@ export const get_categories = (sub) => {
 export const create_category = (data) => {
     return api.post('system/create_category/', data)
 }
-export const delete_category = (id) => {
-    return api.delete('system/delete_category/' + id)
+export const toggle_category = (id, status) => {
+    return api.patch('system/toggle_category/' + id, { status })
+}
+export const update_category = (id, data) => {
+    return api.put('system/update_category/' + id, data)
 }
 
 export const get_brands = () => {
