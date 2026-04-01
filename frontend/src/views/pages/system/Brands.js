@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { get_cat_brands, delete_brand, create_brand, get_categories } from "src/api/system_service"
+import { get_cat_brands, create_brand, get_categories, toggle_brand, update_brand } from "src/api/system_service"
 import CIcon from '@coreui/icons-react'
 import { cilNoteAdd, cilPlus, cilX } from '@coreui/icons'
 import ThemedTablePage from 'src/components/ThemedTablePage'
@@ -8,14 +8,41 @@ const Brands = () => {
     const [brands, setBrands] = useState([])
     const [categories, setCategories] = useState([])
     const [isBrand, setIsBrand] = useState(false)
-    const [toast, setToast] = useState(null);
+    const [toast, setToast] = useState(null)
 
-    const [brand, setBrand] = useState("")
-    const [category, setCategory] = useState("")
-    const [file, setFile] = useState("")
+    const [name, setName] = useState("")
+    const [category, setCategory] = useState("") // category slug
+    const [file, setFile] = useState(null)
+    const [url, setUrl] = useState('')
+    const [isEdit, setIsEdit] = useState(false)
+    const [editId, setEditId] = useState(null)
+
     const [query, setQuery] = useState('')
+    const [statusFilter, setStatusFilter] = useState('all') // all | enabled | suspended
 
-    const toggleBrand = () => setIsBrand(!isBrand)
+    const showToast = (type, msg) => {
+        setToast({ type, msg })
+        setTimeout(() => setToast(null), 3500)
+    }
+
+    const toggleBrand = () => {
+        setIsBrand(!isBrand)
+        setIsEdit(false)
+        setEditId(null)
+        setName('')
+        setFile(null)
+        setUrl('')
+    }
+
+    const editBrand = ({ id, name, url }) => {
+        if (!id || !name || !url) return showToast('danger', 'Invalid Brand')
+        setIsBrand(true)
+        setIsEdit(true)
+        setEditId(id)
+        setName(name)
+        setUrl(url)
+        setFile(null)
+    }
 
     const fetchBrands = async (catId) => {
         try {
@@ -30,8 +57,10 @@ const Brands = () => {
             const response = await get_categories(true)
             if (response.status === 200) {
                 setCategories(response.data);
-                setCategory(response.data[0]?.slug || "")
-                fetchBrands(response.data[0]?.slug || "")
+                const firstSlug = response.data[0]?.slug || ''
+                setCategory(firstSlug)
+                if (firstSlug) fetchBrands(firstSlug)
+                else setBrands([])
             }
         } catch (err) {
             console.log(err)
@@ -42,37 +71,62 @@ const Brands = () => {
         fetchCategories();
     }, [])
 
-    const createBrand = async () => {
-        if (!brand || !category || !file) return showToast("danger", "Brand Name, Category & Image are required")
-        if (confirm(`Is spelled "${brand}" correct?`)) {
-            const catObj = categories.find(c => c.slug === category);
-            if (!catObj) return showToast("danger", "Invalid category selected");
+    const createBrandHandler = async () => {
+        if (!name || !category || !file) return showToast("danger", "Brand Name, Category & Image are required")
+        if (confirm(`Is spelled "${name}" correct?`)) {
+            const catObj = categories.find((c) => c.slug === category)
+            if (!catObj) return showToast("danger", "Invalid category selected")
             try {
-                const formData = new FormData();
-                formData.append("name", brand);
-                formData.append("category_id", catObj.id);
-                formData.append("image", file);
-                await create_brand(formData);
-                showToast("success", "Brand saved successfully!");
-                fetchBrands(category);
-                toggleBrand();
-                setBrand("");
+                const formData = new FormData()
+                formData.append("name", name)
+                formData.append("category_id", catObj.id)
+                formData.append("image", file)
+                await create_brand(formData)
+                showToast("success", "Brand created successfully!")
+                fetchBrands(category)
+                toggleBrand()
             } catch (err) {
-                showToast("danger", err.response?.data?.message || "Failed to Save Brand.");
+                showToast("danger", err.response?.data?.message || "Failed to create brand.")
             }
         }
     }
-    // ── API calls ────────────────────────────────────────────
-    const showToast = (type, msg) => {
-        setToast({ type, msg });
-        setTimeout(() => setToast(null), 3500);
-    };
-    const deleteBrand = async (id) => {
+
+    const updateBrandHandler = async () => {
+        if (!editId) return showToast("danger", "Invalid Brand")
+        if (!name) return showToast("danger", "Brand name is required")
+        if (confirm(`Update to "${name}"?`)) {
+            try {
+                const formData = new FormData()
+                formData.append("name", name)
+                if (file) formData.append("image", file)
+                await update_brand(editId, formData)
+                showToast("success", "Brand updated successfully!")
+                fetchBrands(category)
+                toggleBrand()
+            } catch (err) {
+                showToast("danger", err.response?.data?.message || "Failed to update brand.")
+            }
+        }
+    }
+
+    const handleSubmit = () => {
+        if (isEdit) updateBrandHandler();
+        else createBrandHandler();
+    }
+
+    const toggleBrandStatus = async (id, currentStatus) => {
         if (!id) return
-        if (confirm("Delete this Brand?")) {
-            const response = await delete_brand(id)
-            if (response.status === 200) {
-                setBrands(brands.filter(b => b.id !== id))
+        const action = currentStatus === true ? 'Suspend' : 'Enable'
+        if (confirm(`${action} this brand?`)) {
+            try {
+                await toggle_brand(id, action === 'Enable')
+                showToast(
+                    action === 'Enable' ? 'info' : 'success',
+                    action === 'Enable' ? 'Brand Enabled' : 'Brand Suspended',
+                )
+                fetchBrands(category)
+            } catch (err) {
+                showToast("danger", err.response?.data?.message || `Failed to ${action.toLowerCase()} brand.`)
             }
         }
     }
@@ -83,57 +137,64 @@ const Brands = () => {
 
     const filteredBrands = useMemo(() => {
         const q = query.trim().toLowerCase()
-        if (!q) return brands
-        return brands.filter((b) => String(b?.name || '').toLowerCase().includes(q))
-    }, [brands, query])
+        return brands
+            .filter((b) => {
+                if (statusFilter === 'enabled') return b.status === true
+                if (statusFilter === 'suspended') return b.status === false
+                return true
+            })
+            .filter((b) => {
+                if (!q) return true
+                return String(b?.name || '').toLowerCase().includes(q)
+            })
+    }, [brands, query, statusFilter])
 
-    const rows = useMemo(
-        () => filteredBrands.map((b, idx) => ({ ...b, _rowIndex: idx + 1 })),
-        [filteredBrands],
-    )
+    const rows = filteredBrands.map((b, idx) => ({ ...b, _idx: idx + 1 }))
 
-    const columns = useMemo(
-        () => [
-            {
-                key: '_rowIndex',
-                label: '#',
-                render: (b) => b._rowIndex,
-                headerClassName: 'text-center',
-                cellClassName: 'text-center',
-                headerStyle: { width: 70 },
-            },
-            { key: 'name', label: 'Name', render: (b) => b?.name },
-            {
-                key: 'image',
-                label: 'Image',
-                headerClassName: 'text-center',
-                cellClassName: 'text-center',
-                render: (b) => (
-                    <img
-                        className="rounded"
-                        src={import.meta.env.VITE_API_URL + 'uploads/' + b.url}
-                        alt=""
-                        style={{ width: '3rem' }}
-                    />
-                ),
-            },
-            {
-                key: 'action',
-                label: 'Action',
-                headerClassName: 'text-center',
-                cellClassName: 'text-center',
-                render: (b) => (
-                    <>
-                        <button className="btn btn-sm btn-outline-success me-2">Edit</button>
-                        <button onClick={() => deleteBrand(b.id)} className="btn btn-sm btn-outline-danger">
-                            Delete
-                        </button>
-                    </>
-                ),
-            },
-        ],
-        [deleteBrand],
-    )
+    const columns = [
+        {
+            key: '_idx',
+            label: '#',
+            headerClassName: 'text-center',
+            cellClassName: 'text-center',
+            headerStyle: { width: 70 },
+            render: (b) => b._idx,
+        },
+        { key: 'name', label: 'Name', render: (b) => b?.name },
+        {
+            key: 'image',
+            label: 'Image',
+            headerClassName: 'text-center',
+            cellClassName: 'text-center',
+            render: (b) => (
+                <img
+                    className="rounded"
+                    src={import.meta.env.VITE_API_URL + 'uploads/' + b.url}
+                    alt=""
+                    style={{ width: '3rem' }}
+                />
+            ),
+        },
+        {
+            key: 'action',
+            label: 'Action',
+            headerClassName: 'text-center',
+            cellClassName: 'text-center',
+            render: (b) => (
+                <div className="d-flex justify-content-center gap-2 flex-wrap">
+                    <button onClick={() => editBrand(b)} className="btn btn-sm btn-outline-success">
+                        Edit
+                    </button>
+                    <button
+                        onClick={() => toggleBrandStatus(b.id, b.status)}
+                        className={`btn btn-sm btn-outline-${b.status === true ? 'danger' : 'info'}`}
+                    >
+                        {b.status === true ? 'Suspend' : 'Enable'}
+                    </button>
+                </div>
+            ),
+        },
+    ]
 
     const filtersContent = (
         <div className="d-grid gap-2">
@@ -146,11 +207,28 @@ const Brands = () => {
                     onChange={(e) => setQuery(e.target.value)}
                 />
             </div>
+
+            <div>
+                <div className="small text-medium-emphasis mb-1">Status</div>
+                <select
+                    className="form-select form-select-sm"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                    <option value="all">All</option>
+                    <option value="enabled">Enabled</option>
+                    <option value="suspended">Suspended</option>
+                </select>
+            </div>
+
             <button
                 type="button"
                 className="btn btn-sm btn-outline-secondary"
-                onClick={() => setQuery('')}
-                disabled={!query}
+                onClick={() => {
+                    setQuery('')
+                    setStatusFilter('all')
+                }}
+                disabled={!query && statusFilter === 'all'}
             >
                 Reset
             </button>
@@ -182,25 +260,37 @@ const Brands = () => {
                     <div className="col-md-4">
                         <input
                             type="text"
-                            value={brand}
-                            onChange={(e) => setBrand(e.target.value)}
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
                             className="form-control"
-                            placeholder="Enter unique Brand name"
+                            placeholder="Brand name"
                         />
                     </div>
                     <div className="col-md-3">
                         <input
                             type="file"
-                            onChange={(e) => setFile(e.target.files[0])}
+                            onChange={(e) => setFile(e.target.files?.[0] || null)}
                             className="form-control"
-                            placeholder="Category name"
                         />
                     </div>
-                    <div className="col-md-2 d-flex gap-2">
-                        <button onClick={createBrand} className="btn btn-md-md btn-sm btn-success me-2 text-white">
-                            Save
+
+                    {url && (
+                        <div className="col-md-2">
+                            <img
+                                style={{ width: '50px', marginTop: '10px' }}
+                                src={import.meta.env.VITE_API_URL + 'uploads/' + url}
+                                alt="Brand"
+                            />
+                        </div>
+                    )}
+
+                    <div className={`col-md-${url ? '3' : '5'} d-flex justify-content-end gap-2`}>
+                        <button onClick={handleSubmit} className="btn btn-success me-2">
+                            <CIcon icon={cilNoteAdd} className="me-1" />
+                            {isEdit ? 'Update' : 'Save'}
                         </button>
-                        <button onClick={toggleBrand} className="btn btn-sm btn-secondary">
+                        <button onClick={toggleBrand} className="btn btn-outline-secondary">
+                            <CIcon icon={cilX} className="me-1" />
                             Cancel
                         </button>
                     </div>
@@ -211,6 +301,15 @@ const Brands = () => {
 
     return (
         <div className="container py-4">
+            {toast && (
+                <div
+                    className={`alert alert-${toast.type} alert-dismissible position-fixed top-0 end-0 m-3 shadow`}
+                    style={{ zIndex: 9999, minWidth: 260 }}
+                >
+                    <span>{toast.msg}</span>
+                    <button className="btn-close" onClick={() => setToast(null)} />
+                </div>
+            )}
             <ThemedTablePage
                 actions={{
                     filtersContent,
@@ -218,7 +317,7 @@ const Brands = () => {
                     primary: !isBrand
                         ? {
                             label: 'Add Brand',
-                            color: 'primary',
+                            color: 'success',
                             icon: <CIcon icon={cilPlus} />,
                             onClick: toggleBrand,
                         }
@@ -231,7 +330,7 @@ const Brands = () => {
                 emptyText={brands.length === 0 ? 'No Brands Found' : 'No Brands match your filters'}
                 footerLeft={
                     <div className="small text-medium-emphasis">
-                        Showing {filteredBrands.length} of {brands.length} brands
+                        Showing {rows.length} of {brands.length} brands
                     </div>
                 }
             />

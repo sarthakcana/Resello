@@ -46,7 +46,7 @@ exports.toggleCategory = async (req, res) => {
 }
 
 exports.getBrands = async (req, res) => {
-    const data = await systemService.getBrands(req.params);
+    const data = await systemService.getBrands({ ...req.params, ...req.query });
     res.status(200).json(data);
 }
 // exports.getCategoryBrands = async (req, res) => {
@@ -73,6 +73,14 @@ exports.deleteBrand = async (req, res) => {
     const { id } = req.params;
     if (!id) throw { status: 400, message: "ID is required" }
     const data = await systemService.deleteBrand(id);
+    res.status(200).json(data);
+}
+
+exports.toggleBrand = async (req, res) => {
+    const { id } = req.params;
+    if (!id) throw { status: 400, message: "ID is required" }
+    const { status } = req.body;
+    const data = await systemService.toggleBrand(id, status);
     res.status(200).json(data);
 }
 

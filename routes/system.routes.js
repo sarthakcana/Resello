@@ -22,6 +22,7 @@ router.get('/get_brands/:cat_slug', systemController.getBrands)
 // router.get('/get_category_brands/:slug', systemController.getCategoryBrands)
 router.post('/create_brand', upload.single('image'), reqBody, systemController.createBrand)
 router.put('/update_brand/:id', upload.single('image'), reqBody, systemController.updateBrand)
+router.patch('/toggle_brand/:id', reqBody, systemController.toggleBrand)
 router.delete('/delete_brand/:id', systemController.deleteBrand)
 
 

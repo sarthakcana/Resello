@@ -26,7 +26,7 @@ export const get_brands = () => {
     return api.get('system/get_brands/')
 }
 export const get_cat_brands = (catId) => {
-    return api.get('system/get_brands/' + catId)
+    return api.get('system/get_brands/' + catId + '?all=true')
 }
 
 // export const get_category_brands = (cat_slug) => {
@@ -34,6 +34,12 @@ export const get_cat_brands = (catId) => {
 // }
 export const create_brand = (data) => {
     return api.post('system/create_brand/', data)
+}
+export const update_brand = (id, data) => {
+    return api.put('system/update_brand/' + id, data)
+}
+export const toggle_brand = (id, status) => {
+    return api.patch('system/toggle_brand/' + id, { status })
 }
 export const delete_brand = (id) => {
     return api.delete('system/delete_brand/' + id)

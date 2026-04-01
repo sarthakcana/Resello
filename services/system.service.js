@@ -227,16 +227,18 @@ exports.updateCategory = async (id, data) => {
     }
 }
 
-exports.getBrands = async ({ cat_slug }) => {
+exports.getBrands = async ({ cat_slug, all }) => {
     // console.log(cat_slug, "category slug") // IGNORE
-    let whquery = " WHERE b.status=1";
+    // status: 1=active, 0=inactive, 2=deleted/deprecated
+    const includeAll = String(all).toLowerCase() === 'true' || all === true || all === 1 || all === '1';
+    let whquery = includeAll ? " WHERE b.status<>2" : " WHERE b.status=1";
     if (cat_slug) {
         const cat_data = await pool.query(`select c.id,c.slug from categories c where c.slug=$1`, [cat_slug]);
         if (cat_data.rowCount === 0) throw { status: 404, message: "Category not found" };
         whquery += " AND bc.category_id=" + cat_data.rows[0].id;
         // console.log(whquery,cat_data.rows, "whquery") // IGNORE
     }
-    const data = await pool.query(`select b.id, b.name, b.slug, img.url, count(DISTINCT ms.id) series_count
+    const data = await pool.query(`select b.id, b.name, b.slug, img.url, (b.status=1) status, count(DISTINCT ms.id) series_count
         from brands b
         join brand_categories bc on b.id = bc.brand_id
         join brand_images bi on b.id=bi.brand_id
@@ -246,6 +248,17 @@ exports.getBrands = async ({ cat_slug }) => {
         group by b.id, img.url
         `);
     // data.rows.map(b => b.route = `/product/brand/${b.slug}/products`)
+    return data.rows;
+}
+
+exports.toggleBrand = async (id, status) => {
+    const isEnabled = String(status).toLowerCase() === 'true' || status === true || status === 1 || status === '1';
+    const nextStatus = isEnabled ? 1 : 0;
+    const data = await pool.query(
+        `UPDATE brands SET status=$1 WHERE id=$2 AND status<>2 RETURNING id, name, (status=1) status`,
+        [nextStatus, id],
+    );
+    if (data.rowCount === 0) throw { status: 404, message: "Brand not found" };
     return data.rows;
 }
 // exports.getCategoryBrands = async (params) => {
@@ -281,11 +294,9 @@ exports.createBrand = async (data) => {
             throw { status: 404, message: "Invalid Category" };
 
         const exists = await client.query(
-            "SELECT 1 FROM brands WHERE slug=$1",
+            "SELECT id FROM brands WHERE slug=$1",
             [slug]
         );
-        if (exists.rowCount >= 1)
-            throw { status: 409, message: "Brand already Exists" };
 
         const img = await client.query(
             `INSERT INTO images(url, alt_text, uploaded_by)
@@ -295,24 +306,41 @@ exports.createBrand = async (data) => {
 
         imageInserted = true;
 
-        const brand = await client.query(
-            `INSERT INTO brands(name, slug)
-             VALUES ($1,$2)
-             RETURNING id, name, slug`,
-            [name, slug]
-        );
+        let brand_cat; let brand;
+        if (exists.rowCount >= 1) {
+            brand_cat = await client.query("select * from brands b join brand_categories bc on b.id=bc.brand_id where b.id=$1 and bc.category_id=$2", [exists.rows[0].id, category_id]);
+            if (brand_cat.rowCount >= 1) {
+                throw { status: 409, message: "Brand already Exists" };
+            } else {
+                await client.query(
+                    `INSERT INTO brand_categories(brand_id, category_id)
+                     VALUES ($1,$2)`,
+                    [exists.rows[0].id, category_id]
+                );
+            }
+        }
+        else {
+            brand = await client.query(
+                `INSERT INTO brands(name, slug)
+                 VALUES ($1,$2)
+                 RETURNING id, name, slug`,
+                [name, slug]
+            );
+            await client.query(
+                `INSERT INTO brand_categories(brand_id, category_id)
+                 VALUES ($1,$2)`,
+                [brand.rows[0].id, category_id]
+            );
+            await client.query(
+                `INSERT INTO brand_images(brand_id, image_id)
+                 VALUES ($1,$2)`,
+                [brand.rows[0].id, img.rows[0].id]
+            );
+        }
 
-        await client.query(
-            `INSERT INTO brand_categories(brand_id, category_id)
-             VALUES ($1,$2)`,
-            [brand.rows[0].id, category_id]
-        );
 
-        await client.query(
-            `INSERT INTO brand_images(brand_id, image_id)
-             VALUES ($1,$2)`,
-            [brand.rows[0].id, img.rows[0].id]
-        );
+
+
 
         await client.query("COMMIT");
         return brand.rows;
