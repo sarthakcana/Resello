@@ -3,11 +3,20 @@ import api from "./axios"
 export const get_services = () => {
     return api.get('system/get_services')
 }
+export const get_services_all = () => {
+    return api.get('system/get_services?all=true')
+}
 export const delete_service = (id) => {
     return api.delete('system/delete_service/' + id)
 }
 export const create_service = (formData) => {
     return api.post('system/create_service/', formData)
+}
+export const update_service = (id, formData) => {
+    return api.put('system/update_service/' + id, formData)
+}
+export const toggle_service = (id, status) => {
+    return api.patch('system/toggle_service/' + id, { status })
 }
 export const get_categories = (sub) => {
     return api.get(`system/get_categories/${sub}`);

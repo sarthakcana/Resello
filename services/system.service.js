@@ -1,11 +1,14 @@
 const pool = require("../config/database");
 const slugify = require('slugify')
 const deleteFile = require("../config/delete.config");
-exports.getServices = async () => {
-    const data = await pool.query(`SELECT s.id, s.name, img.url from services s
+exports.getServices = async ({ all } = {}) => {
+    const includeAll = String(all).toLowerCase() === 'true' || all === true || all === 1 || all === '1';
+    const whereClause = includeAll ? '' : 'WHERE s.is_active=True';
+    const data = await pool.query(`SELECT s.id, s.name, img.url, s.is_active status from services s
         JOIN service_images si ON s.id=si.service_id
         JOIN images img ON si.image_id=img.id
-        where is_active=True`);
+        ${whereClause}
+        ORDER BY s.id DESC`);
     return data.rows;
 }
 exports.createService = async (data) => {
@@ -45,6 +48,16 @@ exports.createService = async (data) => {
 }
 exports.deleteService = async (id) => {
     const data = await pool.query(`UPDATE services SET is_active=False WHERE id=$1 RETURNING id, name`, [id]);
+    return data.rows;
+}
+
+exports.toggleService = async (id, status) => {
+    const isEnabled = String(status).toLowerCase() === 'true' || status === true || status === 1 || status === '1';
+    const data = await pool.query(
+        `UPDATE services SET is_active=$1 WHERE id=$2 RETURNING id, name, is_active status`,
+        [isEnabled, id],
+    );
+    if (data.rowCount === 0) throw { status: 404, message: "Service not found" };
     return data.rows;
 }
 
@@ -294,7 +307,7 @@ exports.createBrand = async (data) => {
             throw { status: 404, message: "Invalid Category" };
 
         const exists = await client.query(
-            "SELECT id FROM brands WHERE slug=$1",
+            "SELECT id, name, slug FROM brands WHERE slug=$1",
             [slug]
         );
 
@@ -305,7 +318,6 @@ exports.createBrand = async (data) => {
         );
 
         imageInserted = true;
-
         let brand_cat; let brand;
         if (exists.rowCount >= 1) {
             brand_cat = await client.query("select * from brands b join brand_categories bc on b.id=bc.brand_id where b.id=$1 and bc.category_id=$2", [exists.rows[0].id, category_id]);
@@ -318,6 +330,7 @@ exports.createBrand = async (data) => {
                     [exists.rows[0].id, category_id]
                 );
             }
+            brand=exists;
         }
         else {
             brand = await client.query(
@@ -338,7 +351,7 @@ exports.createBrand = async (data) => {
             );
         }
 
-
+// console.log(brand.rows);
 
 
 

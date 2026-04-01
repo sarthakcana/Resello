@@ -1,7 +1,7 @@
 const systemService = require("../services/system.service")
 
 exports.getServices = async (req, res) => {
-    const data = await systemService.getServices();
+    const data = await systemService.getServices(req.query);
     res.status(200).json(data);
 }
 exports.createService = async (req, res) => {
@@ -13,6 +13,14 @@ exports.deleteService = async (req, res) => {
     const { id } = req.params;
     if (!id) throw { status: 400, message: "ID is required" }
     const data = await systemService.deleteService(id);
+    res.status(200).json(data);
+}
+
+exports.toggleService = async (req, res) => {
+    const { id } = req.params;
+    if (!id) throw { status: 400, message: "ID is required" }
+    const { status } = req.body;
+    const data = await systemService.toggleService(id, status);
     res.status(200).json(data);
 }
 exports.getCategories = async (req, res) => {

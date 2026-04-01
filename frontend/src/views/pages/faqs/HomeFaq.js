@@ -1,18 +1,22 @@
-import { useEffect, useState } from 'react'
-import { getFaqs, deleteFaq, toggleFaqStatus } from '../../../api/faq.api'
+import { useEffect, useMemo, useState } from 'react'
+import { createFaq, getFaqs, toggleFaqStatus, updateFaq } from '../../../api/faq.api'
 import Swal from 'sweetalert2'
-import { useNavigate } from 'react-router-dom'
 import ThemedTablePage from 'src/components/ThemedTablePage'
 
 const HomeFaqs = () => {
-  const navigate = useNavigate()
-
   const [faqs, setFaqs] = useState([])
   const [loading, setLoading] = useState(true)
+
+  const [isFaq, setIsFaq] = useState(false)
+  const [isEdit, setIsEdit] = useState(false)
+  const [editId, setEditId] = useState(null)
+  const [question, setQuestion] = useState('')
+  const [answer, setAnswer] = useState('')
 
   const [currentPage, setCurrentPage] = useState(1)
   const faqsPerPage = 10
   const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
 
   const loadFaqs = async () => {
     try {
@@ -29,56 +33,121 @@ const HomeFaqs = () => {
     loadFaqs()
   }, [])
 
-  // DELETE FAQ
-  const handleDelete = async (id) => {
-    const result = await Swal.fire({
-      title: 'Delete FAQ?',
-      text: 'This FAQ will be permanently deleted.',
-      icon: 'warning',
+  const toggleFaq = () => {
+    setIsFaq(!isFaq)
+    setIsEdit(false)
+    setEditId(null)
+    setQuestion('')
+    setAnswer('')
+  }
+
+  const editFaq = (faq) => {
+    if (!faq?.id) return
+    setIsFaq(true)
+    setIsEdit(true)
+    setEditId(faq.id)
+    setQuestion(faq.question || '')
+    setAnswer(faq.answer || '')
+  }
+
+  const createFaqHandler = async () => {
+    if (!question.trim() || !answer.trim()) {
+      return Swal.fire('Missing fields', 'Question and Answer are required.', 'warning')
+    }
+
+    const res = await Swal.fire({
+      title: 'Create FAQ?',
+      text: 'Save this FAQ now?',
+      icon: 'question',
       showCancelButton: true,
-      confirmButtonColor: '#d33',
-      cancelButtonColor: '#6c757d',
-      confirmButtonText: 'Yes, delete it',
+      confirmButtonText: 'Save',
+      cancelButtonText: 'Cancel',
     })
 
-    if (result.isConfirmed) {
-      try {
-        await deleteFaq(id)
-        await loadFaqs()
+    if (!res.isConfirmed) return
 
-        Swal.fire({
-          icon: 'success',
-          title: 'Deleted!',
-          text: 'FAQ deleted successfully.',
-          timer: 1500,
-          showConfirmButton: false,
-        })
-      } catch (err) {
-        console.error(err)
-        Swal.fire('Error', 'Failed to delete FAQ', 'error')
-      }
+    try {
+      await createFaq({ question: question.trim(), answer: answer.trim(), status: true })
+      await loadFaqs()
+      toggleFaq()
+      Swal.fire({ icon: 'success', title: 'Saved', timer: 1200, showConfirmButton: false })
+    } catch (err) {
+      console.error(err)
+      Swal.fire('Error', err.response?.data?.message || 'Failed to create FAQ', 'error')
     }
+  }
+
+  const updateFaqHandler = async () => {
+    if (!editId) return
+    if (!question.trim() || !answer.trim()) {
+      return Swal.fire('Missing fields', 'Question and Answer are required.', 'warning')
+    }
+
+    const res = await Swal.fire({
+      title: 'Update FAQ?',
+      text: 'Apply these changes?',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Update',
+      cancelButtonText: 'Cancel',
+    })
+
+    if (!res.isConfirmed) return
+
+    try {
+      const current = faqs.find((f) => f.id === editId)
+      const currentStatus = current ? Boolean(current.status) : true
+      await updateFaq(editId, { question: question.trim(), answer: answer.trim(), status: currentStatus })
+      await loadFaqs()
+      toggleFaq()
+      Swal.fire({ icon: 'success', title: 'Updated', timer: 1200, showConfirmButton: false })
+    } catch (err) {
+      console.error(err)
+      Swal.fire('Error', err.response?.data?.message || 'Failed to update FAQ', 'error')
+    }
+  }
+
+  const handleSubmit = () => {
+    if (isEdit) updateFaqHandler()
+    else createFaqHandler()
   }
 
   // TOGGLE STATUS
   const handleToggle = async (faq) => {
     try {
+      const action = faq.status ? 'Suspend' : 'Enable'
+      const res = await Swal.fire({
+        title: `${action} FAQ?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: action,
+        cancelButtonText: 'Cancel',
+      })
+
+      if (!res.isConfirmed) return
+
       const newStatus = !faq.status
-
       await toggleFaqStatus(faq.id, newStatus)
-
-      setFaqs((prev) =>
-        prev.map((f) => (f.id === faq.id ? { ...f, status: newStatus } : f))
-      )
+      setFaqs((prev) => prev.map((f) => (f.id === faq.id ? { ...f, status: newStatus } : f)))
     } catch (err) {
       console.error(err)
       Swal.fire('Error', 'Failed to update status', 'error')
     }
   }
 
-  const filteredFaqs = query.trim()
-    ? faqs.filter((f) => String(f?.question || '').toLowerCase().includes(query.trim().toLowerCase()))
-    : faqs
+  const filteredFaqs = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return faqs
+      .filter((f) => {
+        if (statusFilter === 'enabled') return Boolean(f.status) === true
+        if (statusFilter === 'suspended') return Boolean(f.status) === false
+        return true
+      })
+      .filter((f) => {
+        if (!q) return true
+        return String(f?.question || '').toLowerCase().includes(q)
+      })
+  }, [faqs, query, statusFilter])
 
   // PAGINATION
   const indexOfLast = currentPage * faqsPerPage
@@ -95,30 +164,28 @@ const HomeFaqs = () => {
     {
       key: 'status',
       label: 'Status',
-      render: (f) => (
-        <div className="form-check form-switch">
-          <input
-            className="form-check-input"
-            type="checkbox"
-            checked={Boolean(f.status)}
-            onChange={() => handleToggle(f)}
-          />
-        </div>
-      ),
+      headerClassName: 'text-center',
+      cellClassName: 'text-center',
+      render: (f) => (Boolean(f.status) ? 'Enabled' : 'Suspended'),
     },
     {
       key: 'action',
       label: 'Action',
       render: (f) => (
-        <>
-          <button className="btn btn-sm btn-primary me-2" onClick={() => navigate(`/faqs/edit/${f.id}`)}>
+        <div className="d-flex justify-content-center gap-2 flex-wrap">
+          <button className="btn btn-sm btn-outline-success" onClick={() => editFaq(f)}>
             Edit
           </button>
-          <button className="btn btn-sm btn-danger" onClick={() => handleDelete(f.id)}>
-            Delete
+          <button
+            className={`btn btn-sm btn-outline-${Boolean(f.status) ? 'danger' : 'info'}`}
+            onClick={() => handleToggle(f)}
+          >
+            {Boolean(f.status) ? 'Suspend' : 'Enable'}
           </button>
-        </>
+        </div>
       ),
+      headerClassName: 'text-center',
+      cellClassName: 'text-center',
     },
   ]
 
@@ -136,14 +203,30 @@ const HomeFaqs = () => {
           }}
         />
       </div>
+      <div>
+        <div className="small text-medium-emphasis mb-1">Status</div>
+        <select
+          className="form-select form-select-sm"
+          value={statusFilter}
+          onChange={(e) => {
+            setStatusFilter(e.target.value)
+            setCurrentPage(1)
+          }}
+        >
+          <option value="all">All</option>
+          <option value="enabled">Enabled</option>
+          <option value="suspended">Suspended</option>
+        </select>
+      </div>
       <button
         type="button"
         className="btn btn-sm btn-outline-secondary"
         onClick={() => {
           setQuery('')
+          setStatusFilter('all')
           setCurrentPage(1)
         }}
-        disabled={!query}
+        disabled={!query && statusFilter === 'all'}
       >
         Reset
       </button>
@@ -156,13 +239,52 @@ const HomeFaqs = () => {
         actions={{
           filtersContent,
           onExport: null,
-          primary: {
-            label: 'Add FAQ',
-            color: 'success',
-            onClick: () => navigate('/faqs/add'),
-          },
+          primary: !isFaq
+            ? {
+                label: 'Add FAQ',
+                color: 'success',
+                onClick: toggleFaq,
+              }
+            : null,
         }}
-        topContent={<div className="mb-3"><h4 className="fw-bold mb-0 text-uppercase">Manage FAQs</h4></div>}
+        topContent={
+          <>
+            <div className="mb-3">
+              <h4 className="fw-bold mb-0 text-uppercase">Manage FAQs</h4>
+            </div>
+
+            {isFaq && (
+              <div className="row g-2 mb-4 align-items-start">
+                <div className="col-12 col-md-5">
+                  <textarea
+                    className="form-control"
+                    rows={3}
+                    placeholder="Question"
+                    value={question}
+                    onChange={(e) => setQuestion(e.target.value)}
+                  />
+                </div>
+                <div className="col-12 col-md-5">
+                  <textarea
+                    className="form-control"
+                    rows={3}
+                    placeholder="Answer"
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                  />
+                </div>
+                <div className="col-12 col-md-2 d-flex justify-content-end gap-2">
+                  <button className="btn btn-success" onClick={handleSubmit}>
+                    {isEdit ? 'Update' : 'Save'}
+                  </button>
+                  <button className="btn btn-outline-secondary" onClick={toggleFaq}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        }
         columns={columns}
         rows={rows}
         rowKey={(f) => f.id}

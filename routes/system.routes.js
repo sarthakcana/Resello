@@ -9,6 +9,7 @@ const authMiddleware = require('../middlewares/auth.middleware');
 router.get('/get_services', systemController.getServices)
 router.post('/create_service', upload.single('image'), reqBody, systemController.createService)
 router.put('/update_service/:id', upload.single('image'), reqBody, systemController.updateService)
+router.patch('/toggle_service/:id', reqBody, systemController.toggleService)
 router.delete('/delete_service/:id', systemController.deleteService);
 
 // router.get('/get_categories', systemController.getCategories)
